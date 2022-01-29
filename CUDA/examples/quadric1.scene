@@ -1,0 +1,8 @@
+camera, width: 2, height: 2
+quadric, diffuse_color: [1.0, 0.5, 0], a: 0, b: 1, c: 1, d: 0, e: 0, f: 0, g: 0, h: -10, i: 20, j: 124, reflectivity: 0.2
+quadric, diffuse_color: [0, 0.5, 1.0], specular_color: [0.5, 0.5, 0.5], a: 1, b: 0, c: 1, d: 0, e: 0, f: 0, g: 4, h: 0, i: 10, j: 28, reflectivity: 0.3
+sphere, diffuse_color: [0.25, 0.25, 1], specular_color: [1, 1, 1], position: [4, 0, -7], radius: 1, reflectivity: 0.3, refractivity: 0, ior: 2
+light, color: [2, 2, 2], radial-a2: 0.075, radial-a1: 0.125, radial-a0: 0.125, position: [0, 0, -1], theta: 5, angular-a0: 2, direction: [0, 0, -1]
+quadric, diffuse_color: [0, 0.5, 0.5], specular_color: [0.5, 0.5, 0.5], a: 4, b: 1, c: 4, d: 0, e: 0, f: 0, g: -16, h: -4, i: 64, j: 272, reflectivity: 0.55
+plane, radius: 2.0, normal: [0, 1, 0], diffuse_color: [0.3, 0.3, 0.3], position: [0, -1, 0], reflectivity: 0.0
+light, color: [4, 4, 4], radial-a2: 0.01, radial-a1: 0.0125, radial-a0: 0.0125, position: [10, 10, -5]
