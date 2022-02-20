@@ -1,0 +1,3 @@
+[submodule "Optix/owl"]
+	path = Optix/owl
+	url = https://github.com/owl-project/owl.git

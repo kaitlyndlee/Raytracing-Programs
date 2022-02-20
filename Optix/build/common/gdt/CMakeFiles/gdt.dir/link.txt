@@ -1,2 +1,0 @@
-/usr/bin/ar qc ../../libgdt.a  CMakeFiles/gdt.dir/gdt/gdt.cpp.o
-/usr/bin/ranlib ../../libgdt.a

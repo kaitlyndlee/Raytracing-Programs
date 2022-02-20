@@ -111,30 +111,56 @@ depend:
 .PHONY : depend
 
 #=============================================================================
-# Target rules for targets named gdt
+# Target rules for targets named owl
 
 # Build rule for target.
-gdt: cmake_check_build_system
-	$(MAKE) -f CMakeFiles/Makefile2 gdt
-.PHONY : gdt
+owl: cmake_check_build_system
+	$(MAKE) -f CMakeFiles/Makefile2 owl
+.PHONY : owl
 
 # fast build rule for target.
-gdt/fast:
-	$(MAKE) -f common/gdt/CMakeFiles/gdt.dir/build.make common/gdt/CMakeFiles/gdt.dir/build
-.PHONY : gdt/fast
+owl/fast:
+	$(MAKE) -f owl/owl/CMakeFiles/owl.dir/build.make owl/owl/CMakeFiles/owl.dir/build
+.PHONY : owl/fast
 
 #=============================================================================
-# Target rules for targets named tutorial
+# Target rules for targets named raytrace
 
 # Build rule for target.
-tutorial: cmake_check_build_system
-	$(MAKE) -f CMakeFiles/Makefile2 tutorial
-.PHONY : tutorial
+raytrace: cmake_check_build_system
+	$(MAKE) -f CMakeFiles/Makefile2 raytrace
+.PHONY : raytrace
 
 # fast build rule for target.
-tutorial/fast:
-	$(MAKE) -f tutorial/CMakeFiles/tutorial.dir/build.make tutorial/CMakeFiles/tutorial.dir/build
-.PHONY : tutorial/fast
+raytrace/fast:
+	$(MAKE) -f src/CMakeFiles/raytrace.dir/build.make src/CMakeFiles/raytrace.dir/build
+.PHONY : raytrace/fast
+
+#=============================================================================
+# Target rules for targets named raytrace-ptx
+
+# Build rule for target.
+raytrace-ptx: cmake_check_build_system
+	$(MAKE) -f CMakeFiles/Makefile2 raytrace-ptx
+.PHONY : raytrace-ptx
+
+# fast build rule for target.
+raytrace-ptx/fast:
+	$(MAKE) -f src/CMakeFiles/raytrace-ptx.dir/build.make src/CMakeFiles/raytrace-ptx.dir/build
+.PHONY : raytrace-ptx/fast
+
+#=============================================================================
+# Target rules for targets named raytrace-ptx_ptx
+
+# Build rule for target.
+raytrace-ptx_ptx: cmake_check_build_system
+	$(MAKE) -f CMakeFiles/Makefile2 raytrace-ptx_ptx
+.PHONY : raytrace-ptx_ptx
+
+# fast build rule for target.
+raytrace-ptx_ptx/fast:
+	$(MAKE) -f src/CMakeFiles/raytrace-ptx_ptx.dir/build.make src/CMakeFiles/raytrace-ptx_ptx.dir/build
+.PHONY : raytrace-ptx_ptx/fast
 
 # Help Target
 help:
@@ -144,8 +170,10 @@ help:
 	@echo "... depend"
 	@echo "... rebuild_cache"
 	@echo "... edit_cache"
-	@echo "... gdt"
-	@echo "... tutorial"
+	@echo "... owl"
+	@echo "... raytrace"
+	@echo "... raytrace-ptx"
+	@echo "... raytrace-ptx_ptx"
 .PHONY : help
 
 

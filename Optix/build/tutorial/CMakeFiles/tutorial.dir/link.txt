@@ -1,1 +1,0 @@
-/usr/bin/c++  --std=c++11 -O3 -DNDEBUG  -rdynamic CMakeFiles/tutorial.dir/cuda_compile_ptx_1_generated_devicePrograms.cu.ptx_embedded.c.o CMakeFiles/tutorial.dir/SampleRenderer.cpp.o CMakeFiles/tutorial.dir/main.cpp.o  -o .  ../libgdt.a -Wl,-Bstatic -lcudart_static -Wl,-Bdynamic -lpthread -ldl -lrt -lcuda 

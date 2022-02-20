@@ -1,0 +1,2 @@
+/usr/bin/ar qc libv3math.a  CMakeFiles/v3math.dir/v3math.cu.o
+/usr/bin/ranlib libv3math.a
