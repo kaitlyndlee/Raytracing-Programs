@@ -28,6 +28,7 @@
 #include <cstring>
 #include <owl/owl.h>
 #include <sys/time.h>
+#include <vector>
 
 #define MAX_SHAPES 128
 
@@ -79,6 +80,30 @@ int main(int argc, char **argv) {
   photo_data.width = width;
   photo_data.size = photo_data.width * photo_data.height * 3;
   photo_data.pixmap = (uint8_t *) malloc(photo_data.size);
+
+  // Create vector of spheres only for OWL
+  std::vector<Sphere> spheres;
+  for (int count = 0; count < json_struct->num_shapes; count++) {
+    if (json_struct->shapes_list[count].type == SPHERE) {
+      Sphere sphere;
+      sphere.diffuse_color = vec3f(json_struct->shapes_list[count].diffuse_color[0],
+                                   json_struct->shapes_list[count].diffuse_color[1],
+                                   json_struct->shapes_list[count].diffuse_color[2]);
+      sphere.specular_color = vec3f(json_struct->shapes_list[count].specular_color[0],
+                                    json_struct->shapes_list[count].specular_color[1],
+                                    json_struct->shapes_list[count].specular_color[2]);
+      sphere.position = vec3f(json_struct->shapes_list[count].position[0],
+                              json_struct->shapes_list[count].position[1],
+                              json_struct->shapes_list[count].position[2]);
+      sphere.reflectivity = json_struct->shapes_list[count].reflectivity;
+      sphere.refractivity = json_struct->shapes_list[count].refractivity;
+      sphere.ior = json_struct->shapes_list[count].ior;
+      sphere.radius = json_struct->shapes_list[count].radius;
+      spheres.push_back(sphere);
+      // printf("Position: [%f, %f, %f]\n", sphere.position.x, sphere.position.y,
+      // sphere.position.z);
+    }
+  }
 
   float pixel_height = json_struct->camera_height / photo_data.height;
   float pixel_width = json_struct->camera_width / photo_data.width;
@@ -137,7 +162,38 @@ int main(int argc, char **argv) {
 
   OWLGroup trianglesGroup = owlTrianglesGeomGroupCreate(owl, 1, &trianglesGeom);
   owlGroupBuildAccel(trianglesGroup);
-  OWLGroup world = owlInstanceGroupCreate(owl, 1, &trianglesGroup);
+  // OWLGroup world = owlInstanceGroupCreate(owl, 1, &trianglesGroup);
+  // owlGroupBuildAccel(world);
+
+  OWLVarDecl spheresListVars[] = {{"primitives", OWL_BUFPTR, OWL_OFFSETOF(SpheresList, primitives)},
+                                  {/* sentinel to mark end of list */}};
+  OWLGeomType spheresGeomType =
+      owlGeomTypeCreate(owl, OWL_GEOMETRY_USER, sizeof(SpheresList), spheresListVars, -1);
+  owlGeomTypeSetClosestHit(spheresGeomType, 0, module, "Spheres");
+  owlGeomTypeSetIntersectProg(spheresGeomType, 0, module, "Spheres");
+  owlGeomTypeSetBoundsProg(spheresGeomType, module, "Spheres");
+
+  owlBuildPrograms(owl);
+
+  // ##################################################################
+  // set up all the *GEOMS* we want to run that code on
+  // ##################################################################
+  OWLBuffer spheresBuffer =
+      owlDeviceBufferCreate(owl, OWL_USER_TYPE(spheres[0]), spheres.size(), spheres.data());
+  OWLGeom spheresGeom = owlGeomCreate(owl, spheresGeomType);
+  owlGeomSetPrimCount(spheresGeom, spheres.size());
+  owlGeomSetBuffer(spheresGeom, "primitives", spheresBuffer);
+
+  // ##################################################################
+  // set up all *ACCELS* we need to trace into those groups
+  // ##################################################################
+
+  OWLGeom userGeoms[] = {spheresGeom};
+  OWLGroup userGeomGroup = owlUserGeomGroupCreate(owl, 1, userGeoms);
+  owlGroupBuildAccel(userGeomGroup);
+
+  OWLGroup world = owlInstanceGroupCreate(owl, 1);
+  owlInstanceGroupSetChild(world, 0, userGeomGroup);
   owlGroupBuildAccel(world);
 
   // ##################################################################
@@ -160,7 +216,6 @@ int main(int argc, char **argv) {
 
   // Allocate room for one RayGen shader, create it, and
   // hold on to it with the "owl" context
-
   OWLVarDecl rayGenVars[] = {{"pixmap", OWL_BUFPTR, OWL_OFFSETOF(RayGenData, pixmap)},
                              {"width", OWL_INT, OWL_OFFSETOF(RayGenData, width)},
                              {"height", OWL_INT, OWL_OFFSETOF(RayGenData, height)},

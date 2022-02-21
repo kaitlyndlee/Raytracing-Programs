@@ -85,7 +85,7 @@ OPTIX_RAYGEN_PROGRAM(simpleRayGen)()
            OWL_TERMINAL_CYAN,
            OWL_TERMINAL_DEFAULT);
   }
-
+  PerRayData prd;
   owl::Ray ray;
   ray.origin = vec3f(0.f, 0.f, 0.f);
   int view_plane_center[3] = {0, 0, -1};
@@ -108,13 +108,82 @@ OPTIX_RAYGEN_PROGRAM(simpleRayGen)()
 
 }
 
-OPTIX_MISS_PROGRAM(miss)()
-{
+OPTIX_MISS_PROGRAM(miss)() {
   const vec2i pixelID = owl::getLaunchIndex();
 
   const MissProgData &self = owl::getProgramData<MissProgData>();
   
   vec3f &prd = owl::getPRD<vec3f>();
   int pattern = (pixelID.x / 8) ^ (pixelID.y/8);
-  prd = (pattern&1) ? self.color1 : self.color0;
+  prd = vec3f(0, 0, 0);
+}
+
+OPTIX_INTERSECT_PROGRAM(Spheres)() {
+      printf("%sIn Sphere intersect%s\n",
+           OWL_TERMINAL_CYAN,
+           OWL_TERMINAL_DEFAULT);
+  const int primID = optixGetPrimitiveIndex();
+  const auto &self = owl::getProgramData<SpheresList>().primitives[primID];
+
+  const vec3f origin = optixGetWorldRayOrigin();
+  const vec3f direction = optixGetWorldRayDirection();
+  float hit_t = optixGetRayTmax();
+  const float tmin = optixGetRayTmin();
+
+  const vec3f origin_to_pos = origin - self.position;
+
+  // float temp[3];
+
+  // v3_subtract(temp, ray_o, sphere->position);
+
+  // float a = ray_d[0] * ray_d[0] + ray_d[1] * ray_d[1] + ray_d[2]* ray_d[2];
+   const float a = dot(direction, direction);
+  // float b = 2 * v3_dot_product(ray_d, temp);
+  const float b = 2 * dot(direction, origin_to_pos);
+  // float c = v3_dot_product(temp, temp) - powf(sphere->radius, 2);
+  const float c = dot(origin_to_pos, origin_to_pos) - (self.radius * self.radius);
+
+  const float discriminant = b * b - 4 * a * c;
+
+  if (discriminant < 0.f) {
+    return;
+  }
+  else {
+    // *distance = (-b - powf(discriminant, 0.5)) / (2.0 * a);
+
+    // if (*distance < 0) {
+    //   *distance = (-b + powf(discriminant, 0.5)) / (2.0 * a);
+    // } 
+
+    float temp = (-b + sqrtf(discriminant)) / (2.0 * a);
+    if (temp < hit_t && temp > tmin) {
+      hit_t = temp;
+    }
+    vec3f &prd = owl::getPRD<vec3f>();
+    prd = self.diffuse_color;
+  }
+  if (hit_t < optixGetRayTmax()) {
+    optixReportIntersection(hit_t, 0);
+  }
+}
+
+OPTIX_BOUNDS_PROGRAM(Spheres)(const void *geomData,
+                              box3f &primBounds,
+                              const int primID) {
+  const SpheresList &self = *(const SpheresList *) geomData;
+  const Sphere sphere = self.primitives[primID];
+  primBounds = box3f()
+    .extend(sphere.position - sphere.radius)
+    .extend(sphere.position + sphere.radius);
+
+  printf("Position: [%f, %f, %f]\n", sphere.position.x, sphere.position.y, sphere.position.z);
+  printf("radius: %f\n", sphere.radius);
+
+}
+
+OPTIX_CLOSEST_HIT_PROGRAM(Spheres)() {
+  // const int primID = optixGetPrimitiveIndex();
+  // const auto &self = owl::getProgramData<SpheresList>().primitives[primID];
+  // PerRayData &prd = owl::getPRD<PerRayData>();
+  // prd = self.diffuse_color;
 }

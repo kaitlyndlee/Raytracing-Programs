@@ -33,6 +33,49 @@ struct TrianglesGeomData {
   vec3f *vertex;
 };
 
+struct Sphere {
+  vec3f diffuse_color;
+  vec3f specular_color;
+  vec3f position;
+  float reflectivity;
+  float refractivity;
+  float ior;
+  float radius;
+};
+
+struct SpheresList {
+  Sphere *primitives;
+};
+
+struct Plane {
+  vec3f diffuse_color;
+  vec3f specular_color;
+  vec3f position;
+  float reflectivity;
+  float refractivity;
+  float ior;
+  vec3f normal;
+};
+
+struct Quadric {
+  vec3f diffuse_color;
+  vec3f specular_color;
+  vec3f position;
+  float reflectivity;
+  float refractivity;
+  float ior;
+  float a;
+  float b;
+  float c;
+  float d;
+  float e;
+  float f;
+  float g;
+  float h;
+  float i;
+  float j;
+};
+
 struct RayGenData {
   uint8_t *pixmap;
   int height;
@@ -42,6 +85,11 @@ struct RayGenData {
   float camera_height;
   float camera_width;
   OptixTraversableHandle world;
+};
+
+struct PerRayData {
+  vec3f color;
+  float distance;
 };
 
 /* variables for the miss program */
