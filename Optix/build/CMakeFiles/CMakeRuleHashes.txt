@@ -1,2 +1,0 @@
-# Hashes of file build rules.
-5d532cfe8d49d2de7cee22b178ac126d src/raytrace-ptx.c
