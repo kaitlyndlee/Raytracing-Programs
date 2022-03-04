@@ -19,70 +19,14 @@
 // pattern.
 
 #include "deviceCode.h"
+
 #include <optix_device.h>
 
-// // OPTIX_RAYGEN_PROGRAM() is a simple macro defined in deviceAPI.h to add
-// // standard code for defining a shader method. It puts:
-// //   extern "C" __global__ void __raygen__##programName
-// // in front of the program name given
-// OPTIX_RAYGEN_PROGRAM(simpleRayGen)() {
-//   // read in the program data set by the calling program hostCode.cpp using
-//   // lloSbtRayGensBuild; see RayGenData in deviceCode.h
-//   const RayGenData &self = owl::getProgramData<RayGenData>();
-//   // Under the hood, OptiX maps rays generated in CUDA thread blocks to a pixel
-//   // ID, where the ID is a 2D vector, 0 to frame buffer width-1, 0 to height-1
-//   const vec2i pixelID = owl::getLaunchIndex();
-//   if (pixelID == owl::vec2i(0)) {
-//     // the first thread ID is always (0,0), so we can generate a message to show
-//     // things are working
-//     printf("%sHello OptiX From your First RayGen Program%s\n",
-//            OWL_TERMINAL_CYAN, OWL_TERMINAL_DEFAULT);
-//   }
-
-//   // Generate a simple checkerboard pattern as a test. Note that the upper left
-//   // corner is pixel (0,0).
-//   int pattern = (pixelID.x / 8) ^ (pixelID.y / 8);
-//   // alternate pattern, showing that pixel (0,0) is in the upper left corner
-//   // pattern = (pixelID.x*pixelID.x + pixelID.y*pixelID.y) / 100000;
-//   const vec3f color = (pattern & 1) ? self.color1 : self.color0;
-
-//   // // find the frame buffer location (x + width*y) and put the "computed"
-//   // result
-//   // // there
-//   // const int fbOfs = pixelID.x + self.fbSize.x * pixelID.y;
-//   // self.fbPtr[fbOfs] = owl::make_rgba(color);
-
-//   float color_vector[3] = {color.x, color.y, color.z};
-//   self.pixmap[(pixelID.y * self.width + pixelID.x) * 3] = color_vector[0] * 255;
-//   self.pixmap[(pixelID.y * self.width + pixelID.x) * 3 + 1] = color_vector[1] * 255;
-//   self.pixmap[(pixelID.y * self.width + pixelID.x) * 3 + 2] = color_vector[2] * 255;
-// }
-
-OPTIX_CLOSEST_HIT_PROGRAM(TriangleMesh)()
-{
-  vec3f &prd = owl::getPRD<vec3f>();
-
-  const TrianglesGeomData &self = owl::getProgramData<TrianglesGeomData>();
-  
-  // compute normal:
-  const int   primID = optixGetPrimitiveIndex();
-  const vec3i index  = self.index[primID];
-  const vec3f &A     = self.vertex[index.x];
-  const vec3f &B     = self.vertex[index.y];
-  const vec3f &C     = self.vertex[index.z];
-  const vec3f Ng     = normalize(cross(B-A,C-A));
-
-  const vec3f rayDir = optixGetWorldRayDirection();
-  prd = (.2f + .8f*fabs(dot(rayDir,Ng)))*self.color;
-}
-
-OPTIX_RAYGEN_PROGRAM(simpleRayGen)()
-{
+OPTIX_RAYGEN_PROGRAM(simpleRayGen)() {
   const RayGenData &self = owl::getProgramData<RayGenData>();
   const vec2i pixelID = owl::getLaunchIndex();
   if (pixelID == owl::vec2i(0)) {
-    printf("%sHello OptiX From your First RayGen Program%s\n",
-           OWL_TERMINAL_CYAN,
+    printf("%sHello OptiX From your First RayGen Program%s\n", OWL_TERMINAL_CYAN,
            OWL_TERMINAL_DEFAULT);
   }
   PerRayData prd;
@@ -90,38 +34,36 @@ OPTIX_RAYGEN_PROGRAM(simpleRayGen)()
   ray.origin = vec3f(0.f, 0.f, 0.f);
   int view_plane_center[3] = {0, 0, -1};
 
-  ray.direction[0] = view_plane_center[0] - (self.camera_width / 2.0) + self.pixel_width * (pixelID.x + 0.5);
-  ray.direction[1] = view_plane_center[1] + (self.camera_height / 2.0) - self.pixel_height * (pixelID.y + 0.5);
+  ray.direction[0] =
+      view_plane_center[0] - (self.camera_width / 2.0) + self.pixel_width * (pixelID.x + 0.5);
+  ray.direction[1] =
+      view_plane_center[1] + (self.camera_height / 2.0) - self.pixel_height * (pixelID.y + 0.5);
   ray.direction[2] = view_plane_center[2];
 
   ray.direction = normalize(ray.direction);
 
   vec3f color;
-  owl::traceRay(/*accel to trace against*/self.world,
-                /*the ray to trace*/ray,
-                /*prd*/color);
-    
+  owl::traceRay(/*accel to trace against*/ self.world,
+                /*the ray to trace*/ ray,
+                /*prd*/ color);
+
   float color_vector[3] = {color.x, color.y, color.z};
   self.pixmap[(pixelID.y * self.width + pixelID.x) * 3] = color_vector[0] * 255;
   self.pixmap[(pixelID.y * self.width + pixelID.x) * 3 + 1] = color_vector[1] * 255;
   self.pixmap[(pixelID.y * self.width + pixelID.x) * 3 + 2] = color_vector[2] * 255;
-
 }
 
 OPTIX_MISS_PROGRAM(miss)() {
   const vec2i pixelID = owl::getLaunchIndex();
 
   const MissProgData &self = owl::getProgramData<MissProgData>();
-  
+
   vec3f &prd = owl::getPRD<vec3f>();
-  int pattern = (pixelID.x / 8) ^ (pixelID.y/8);
+  int pattern = (pixelID.x / 8) ^ (pixelID.y / 8);
   prd = vec3f(0, 0, 0);
 }
 
 OPTIX_INTERSECT_PROGRAM(Spheres)() {
-      printf("%sIn Sphere intersect%s\n",
-           OWL_TERMINAL_CYAN,
-           OWL_TERMINAL_DEFAULT);
   const int primID = optixGetPrimitiveIndex();
   const auto &self = owl::getProgramData<SpheresList>().primitives[primID];
 
@@ -132,29 +74,15 @@ OPTIX_INTERSECT_PROGRAM(Spheres)() {
 
   const vec3f origin_to_pos = origin - self.position;
 
-  // float temp[3];
-
-  // v3_subtract(temp, ray_o, sphere->position);
-
-  // float a = ray_d[0] * ray_d[0] + ray_d[1] * ray_d[1] + ray_d[2]* ray_d[2];
-   const float a = dot(direction, direction);
-  // float b = 2 * v3_dot_product(ray_d, temp);
+  const float a = dot(direction, direction);
   const float b = 2 * dot(direction, origin_to_pos);
-  // float c = v3_dot_product(temp, temp) - powf(sphere->radius, 2);
   const float c = dot(origin_to_pos, origin_to_pos) - (self.radius * self.radius);
 
   const float discriminant = b * b - 4 * a * c;
-
   if (discriminant < 0.f) {
     return;
   }
   else {
-    // *distance = (-b - powf(discriminant, 0.5)) / (2.0 * a);
-
-    // if (*distance < 0) {
-    //   *distance = (-b + powf(discriminant, 0.5)) / (2.0 * a);
-    // } 
-
     float temp = (-b + sqrtf(discriminant)) / (2.0 * a);
     if (temp < hit_t && temp > tmin) {
       hit_t = temp;
@@ -167,18 +95,11 @@ OPTIX_INTERSECT_PROGRAM(Spheres)() {
   }
 }
 
-OPTIX_BOUNDS_PROGRAM(Spheres)(const void *geomData,
-                              box3f &primBounds,
-                              const int primID) {
+OPTIX_BOUNDS_PROGRAM(Spheres)(const void *geomData, box3f &primBounds, const int primID) {
   const SpheresList &self = *(const SpheresList *) geomData;
   const Sphere sphere = self.primitives[primID];
-  primBounds = box3f()
-    .extend(sphere.position - sphere.radius)
-    .extend(sphere.position + sphere.radius);
-
-  printf("Position: [%f, %f, %f]\n", sphere.position.x, sphere.position.y, sphere.position.z);
-  printf("radius: %f\n", sphere.radius);
-
+  primBounds =
+      box3f().extend(sphere.position - sphere.radius).extend(sphere.position + sphere.radius);
 }
 
 OPTIX_CLOSEST_HIT_PROGRAM(Spheres)() {
@@ -186,4 +107,110 @@ OPTIX_CLOSEST_HIT_PROGRAM(Spheres)() {
   // const auto &self = owl::getProgramData<SpheresList>().primitives[primID];
   // PerRayData &prd = owl::getPRD<PerRayData>();
   // prd = self.diffuse_color;
+}
+
+OPTIX_INTERSECT_PROGRAM(Planes)() {
+  const int primID = optixGetPrimitiveIndex();
+  const auto &self = owl::getProgramData<PlanesList>().primitives[primID];
+
+  const vec3f origin = optixGetWorldRayOrigin();
+  const vec3f direction = optixGetWorldRayDirection();
+  float hit_t = optixGetRayTmax();
+  const float tmin = optixGetRayTmin();
+
+  const vec3f origin_to_pos = origin - self.position;
+  const float numerator = dot(origin_to_pos, self.normal);
+  const float denominator = dot(direction, self.normal);
+
+  if (denominator == 0) {
+    return;
+  }
+
+  float t = -1 * numerator / denominator;
+  if (t < 0) {
+    return;
+  }
+
+  if (t < hit_t && t > tmin) {
+    hit_t = t;
+  }
+  vec3f &prd = owl::getPRD<vec3f>();
+  prd = self.diffuse_color;
+
+  if (hit_t < optixGetRayTmax()) {
+    optixReportIntersection(hit_t, 0);
+  }
+}
+
+// TODO: what does this do exactly?
+OPTIX_BOUNDS_PROGRAM(Planes)(const void *geomData, box3f &primBounds, const int primID) {
+  const PlanesList &self = *(const PlanesList *) geomData;
+  const Plane plane = self.primitives[primID];
+  primBounds = box3f(vec3f(-1.f, -1.f, 0.f), vec3f(+1.f, +1.f, +1.f));
+}
+
+OPTIX_CLOSEST_HIT_PROGRAM(Planes)() {
+}
+
+OPTIX_INTERSECT_PROGRAM(Quadrics)() {
+  const int primID = optixGetPrimitiveIndex();
+  const auto &self = owl::getProgramData<QuadricsList>().primitives[primID];
+
+  const vec3f origin = optixGetWorldRayOrigin();
+  const vec3f direction = optixGetWorldRayDirection();
+  float hit_t = optixGetRayTmax();
+  const float tmin = optixGetRayTmin();
+
+  float a_q = self.a * powf(direction.x, 2) + self.b * powf(direction.y, 2) +
+              self.c * powf(direction.z, 2) + self.d * direction.x * direction.y +
+              self.e * direction.x * direction.z + self.f * direction.y * direction.z;
+
+  float b_q = 2.0 * self.a * origin.x * direction.x + 2.0 * self.b * origin.y * direction.y +
+              2.0 * self.c * origin.z * direction.z +
+              self.d * (origin.x * direction.y + origin.y * direction.x) +
+              self.e * (origin.x * direction.z + origin.z * direction.x) +
+              self.f * (origin.y * direction.z + origin.z * direction.y) + self.g * direction.x +
+              self.h * direction.y + self.i * direction.z;
+
+  float c_q = self.a * powf(origin.x, 2) + self.b * powf(origin.y, 2) + self.c * powf(origin.z, 2) +
+              self.d * origin.x * origin.y + self.e * origin.x * origin.z +
+              self.f * origin.y * origin.z + self.g * origin.x + self.h * origin.y +
+              self.i * origin.z + self.j;
+
+  float t = 0;
+
+  if (a_q == 0.0) {
+    t = -1.0 * c_q / b_q;
+  }
+  else {
+    float discriminant = powf(b_q, 2) - 4.0 * a_q * c_q;
+    if (discriminant < 0.0) {
+      return;
+    }
+
+    t = (-b_q - powf(discriminant, 0.5)) / (2.0 * a_q);
+    if (t <= 0) {
+      t = (-b_q + powf(discriminant, 0.5)) / (2.0 * a_q);
+    }
+  }
+
+  if (t < hit_t && t > tmin) {
+    hit_t = t;
+  }
+  vec3f &prd = owl::getPRD<vec3f>();
+  prd = self.diffuse_color;
+
+  if (hit_t < optixGetRayTmax()) {
+    optixReportIntersection(hit_t, 0);
+  }
+}
+
+// TODO: what does this do exactly?
+OPTIX_BOUNDS_PROGRAM(Quadrics)(const void *geomData, box3f &primBounds, const int primID) {
+  const QuadricsList &self = *(const QuadricsList *) geomData;
+  const Quadric quadric = self.primitives[primID];
+  primBounds = box3f(vec3f(-1.f, -1.f, 0.f), vec3f(+1.f, +1.f, +1.f));
+}
+
+OPTIX_CLOSEST_HIT_PROGRAM(Quadrics)() {
 }

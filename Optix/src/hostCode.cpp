@@ -83,6 +83,8 @@ int main(int argc, char **argv) {
 
   // Create vector of spheres only for OWL
   std::vector<Sphere> spheres;
+  std::vector<Plane> planes;
+  std::vector<Quadric> quadrics;
   for (int count = 0; count < json_struct->num_shapes; count++) {
     if (json_struct->shapes_list[count].type == SPHERE) {
       Sphere sphere;
@@ -100,25 +102,56 @@ int main(int argc, char **argv) {
       sphere.ior = json_struct->shapes_list[count].ior;
       sphere.radius = json_struct->shapes_list[count].radius;
       spheres.push_back(sphere);
-      // printf("Position: [%f, %f, %f]\n", sphere.position.x, sphere.position.y,
-      // sphere.position.z);
+    }
+    else if (json_struct->shapes_list[count].type == PLANE) {
+      Plane plane;
+      plane.diffuse_color = vec3f(json_struct->shapes_list[count].diffuse_color[0],
+                                  json_struct->shapes_list[count].diffuse_color[1],
+                                  json_struct->shapes_list[count].diffuse_color[2]);
+      plane.specular_color = vec3f(json_struct->shapes_list[count].specular_color[0],
+                                   json_struct->shapes_list[count].specular_color[1],
+                                   json_struct->shapes_list[count].specular_color[2]);
+      plane.position = vec3f(json_struct->shapes_list[count].position[0],
+                             json_struct->shapes_list[count].position[1],
+                             json_struct->shapes_list[count].position[2]);
+      plane.reflectivity = json_struct->shapes_list[count].reflectivity;
+      plane.refractivity = json_struct->shapes_list[count].refractivity;
+      plane.ior = json_struct->shapes_list[count].ior;
+      plane.normal = vec3f(json_struct->shapes_list[count].normal[0],
+                           json_struct->shapes_list[count].normal[1],
+                           json_struct->shapes_list[count].normal[2]);
+      planes.push_back(plane);
+    }
+    else if (json_struct->shapes_list[count].type == QUADRIC) {
+      Quadric quadric;
+      quadric.diffuse_color = vec3f(json_struct->shapes_list[count].diffuse_color[0],
+                                    json_struct->shapes_list[count].diffuse_color[1],
+                                    json_struct->shapes_list[count].diffuse_color[2]);
+      quadric.specular_color = vec3f(json_struct->shapes_list[count].specular_color[0],
+                                     json_struct->shapes_list[count].specular_color[1],
+                                     json_struct->shapes_list[count].specular_color[2]);
+      quadric.position = vec3f(json_struct->shapes_list[count].position[0],
+                               json_struct->shapes_list[count].position[1],
+                               json_struct->shapes_list[count].position[2]);
+      quadric.reflectivity = json_struct->shapes_list[count].reflectivity;
+      quadric.refractivity = json_struct->shapes_list[count].refractivity;
+      quadric.a = json_struct->shapes_list[count].a;
+      quadric.b = json_struct->shapes_list[count].b;
+      quadric.c = json_struct->shapes_list[count].c;
+      quadric.d = json_struct->shapes_list[count].d;
+      quadric.e = json_struct->shapes_list[count].e;
+      quadric.f = json_struct->shapes_list[count].f;
+      quadric.g = json_struct->shapes_list[count].g;
+      quadric.h = json_struct->shapes_list[count].h;
+      quadric.i = json_struct->shapes_list[count].i;
+      quadric.j = json_struct->shapes_list[count].j;
+      quadric.ior = json_struct->shapes_list[count].ior;
+      quadrics.push_back(quadric);
     }
   }
 
   float pixel_height = json_struct->camera_height / photo_data.height;
   float pixel_width = json_struct->camera_width / photo_data.width;
-
-  //################ From OWL####################
-  const int NUM_VERTICES = 8;
-  vec3f vertices[NUM_VERTICES] = {{-1.f, -1.f, -10.f}, {+1.f, -1.f, -10.f}, {-1.f, +1.f, -10.f},
-                                  {+1.f, +1.f, -10.f}, {-1.f, -1.f, -10.f}, {+1.f, -1.f, -10.f},
-                                  {-1.f, +1.f, -10.f}, {+1.f, +1.f, -10.f}};
-
-  const int NUM_INDICES = 12;
-  vec3i indices[NUM_INDICES] = {{0, 1, 3}, {2, 3, 0}, {5, 7, 6}, {5, 6, 4}, {0, 4, 5}, {0, 5, 1},
-                                {2, 3, 7}, {2, 7, 6}, {1, 5, 7}, {1, 7, 3}, {4, 0, 2}, {4, 2, 6}};
-
-  //################ From OWL####################
 
   LOG("owl example '" << argv[0] << "' starting up");
   LOG("building module, programs, and pipeline");
@@ -139,32 +172,6 @@ int main(int argc, char **argv) {
   // set up all the *GEOMETRY* graph we want to render
   // ##################################################################
 
-  // -------------------------------------------------------
-  // declare geometry type
-  // -------------------------------------------------------
-  OWLVarDecl trianglesGeomVars[] = {{"index", OWL_BUFPTR, OWL_OFFSETOF(TrianglesGeomData, index)},
-                                    {"vertex", OWL_BUFPTR, OWL_OFFSETOF(TrianglesGeomData, vertex)},
-                                    {"color", OWL_FLOAT3, OWL_OFFSETOF(TrianglesGeomData, color)}};
-  OWLGeomType trianglesGeomType =
-      owlGeomTypeCreate(owl, OWL_TRIANGLES, sizeof(TrianglesGeomData), trianglesGeomVars, 3);
-  owlGeomTypeSetClosestHit(trianglesGeomType, 0, module, "TriangleMesh");
-
-  OWLBuffer vertexBuffer = owlDeviceBufferCreate(owl, OWL_FLOAT3, NUM_VERTICES, vertices);
-  OWLBuffer indexBuffer = owlDeviceBufferCreate(owl, OWL_INT3, NUM_INDICES, indices);
-  OWLGeom trianglesGeom = owlGeomCreate(owl, trianglesGeomType);
-
-  owlTrianglesSetVertices(trianglesGeom, vertexBuffer, NUM_VERTICES, sizeof(vec3f), 0);
-  owlTrianglesSetIndices(trianglesGeom, indexBuffer, NUM_INDICES, sizeof(vec3i), 0);
-
-  owlGeomSetBuffer(trianglesGeom, "vertex", vertexBuffer);
-  owlGeomSetBuffer(trianglesGeom, "index", indexBuffer);
-  owlGeomSet3f(trianglesGeom, "color", owl3f {0, 1, 0});
-
-  OWLGroup trianglesGroup = owlTrianglesGeomGroupCreate(owl, 1, &trianglesGeom);
-  owlGroupBuildAccel(trianglesGroup);
-  // OWLGroup world = owlInstanceGroupCreate(owl, 1, &trianglesGroup);
-  // owlGroupBuildAccel(world);
-
   OWLVarDecl spheresListVars[] = {{"primitives", OWL_BUFPTR, OWL_OFFSETOF(SpheresList, primitives)},
                                   {/* sentinel to mark end of list */}};
   OWLGeomType spheresGeomType =
@@ -172,6 +179,24 @@ int main(int argc, char **argv) {
   owlGeomTypeSetClosestHit(spheresGeomType, 0, module, "Spheres");
   owlGeomTypeSetIntersectProg(spheresGeomType, 0, module, "Spheres");
   owlGeomTypeSetBoundsProg(spheresGeomType, module, "Spheres");
+
+  OWLVarDecl planesListVars[] = {{"primitives", OWL_BUFPTR, OWL_OFFSETOF(PlanesList, primitives)},
+                                 {/* sentinel to mark end of list */}};
+  OWLGeomType planesGeomType =
+      owlGeomTypeCreate(owl, OWL_GEOMETRY_USER, sizeof(PlanesList), planesListVars, -1);
+  owlGeomTypeSetClosestHit(planesGeomType, 0, module, "Planes");
+  owlGeomTypeSetIntersectProg(planesGeomType, 0, module, "Planes");
+  owlGeomTypeSetBoundsProg(planesGeomType, module, "Planes");
+
+  OWLVarDecl quadricsListVars[] = {
+      {"primitives", OWL_BUFPTR, OWL_OFFSETOF(QuadricsList, primitives)},
+      {/* sentinel to mark end of list */}};
+
+  OWLGeomType quadricsGeomType =
+      owlGeomTypeCreate(owl, OWL_GEOMETRY_USER, sizeof(QuadricsList), quadricsListVars, -1);
+  owlGeomTypeSetClosestHit(quadricsGeomType, 0, module, "Quadrics");
+  owlGeomTypeSetIntersectProg(quadricsGeomType, 0, module, "Quadrics");
+  owlGeomTypeSetBoundsProg(quadricsGeomType, module, "Quadrics");
 
   owlBuildPrograms(owl);
 
@@ -184,12 +209,24 @@ int main(int argc, char **argv) {
   owlGeomSetPrimCount(spheresGeom, spheres.size());
   owlGeomSetBuffer(spheresGeom, "primitives", spheresBuffer);
 
+  OWLBuffer planesBuffer =
+      owlDeviceBufferCreate(owl, OWL_USER_TYPE(planes[0]), planes.size(), planes.data());
+  OWLGeom planesGeom = owlGeomCreate(owl, planesGeomType);
+  owlGeomSetPrimCount(planesGeom, planes.size());
+  owlGeomSetBuffer(planesGeom, "primitives", planesBuffer);
+
+  OWLBuffer quadricsBuffer =
+      owlDeviceBufferCreate(owl, OWL_USER_TYPE(quadrics[0]), quadrics.size(), quadrics.data());
+  OWLGeom quadricsGeom = owlGeomCreate(owl, quadricsGeomType);
+  owlGeomSetPrimCount(quadricsGeom, quadrics.size());
+  owlGeomSetBuffer(quadricsGeom, "primitives", quadricsBuffer);
+
   // ##################################################################
   // set up all *ACCELS* we need to trace into those groups
   // ##################################################################
 
-  OWLGeom userGeoms[] = {spheresGeom};
-  OWLGroup userGeomGroup = owlUserGeomGroupCreate(owl, 1, userGeoms);
+  OWLGeom userGeoms[] = {spheresGeom, planesGeom, quadricsGeom};
+  OWLGroup userGeomGroup = owlUserGeomGroupCreate(owl, 3, userGeoms);
   owlGroupBuildAccel(userGeomGroup);
 
   OWLGroup world = owlInstanceGroupCreate(owl, 1);

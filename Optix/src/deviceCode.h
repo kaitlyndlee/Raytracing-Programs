@@ -57,6 +57,10 @@ struct Plane {
   vec3f normal;
 };
 
+struct PlanesList {
+  Plane *primitives;
+};
+
 struct Quadric {
   vec3f diffuse_color;
   vec3f specular_color;
@@ -74,6 +78,10 @@ struct Quadric {
   float h;
   float i;
   float j;
+};
+
+struct QuadricsList {
+  Quadric *primitives;
 };
 
 struct RayGenData {
