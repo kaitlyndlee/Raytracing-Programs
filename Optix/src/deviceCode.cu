@@ -22,50 +22,243 @@
 
 #include <optix_device.h>
 
+#define MAX_DEPTH 50
+
+// inline __device__ vec3f tracePath(const RayGenData &self, owl::Ray &ray, PerRayData &prd) {
+//   for (int i = 0; i < MAX_DEPTH; i++) {
+//       owl::traceRay(/*accel to trace against*/ self.world,
+//                 /*the ray to trace*/ ray,
+//                 /*prd*/ color);
+
+//   }
+// }
+
+inline __device__ void set_to_black(vec3f *input) {
+  input->x = 0;
+  input->y = 0;
+  input->z = 0;
+}
+
+inline __device__ float clamp(float value, float lower_bound, float upper_bound) {
+  if (value > upper_bound) {
+    value = upper_bound;
+  }
+  if (value < lower_bound) {
+    value = lower_bound;
+  }
+
+  return value;
+}
+
+/**
+ * Reflects the vector given as the parameter a over n and stores the result in the destination
+ * pointer
+ *
+ * @param dst - result vector pointer
+ * @param v - pointer of the vector to relflect
+ * @param n - pointer of the vector that is the surface
+ */
+inline __device__ void reflect(vec3f *dst, vec3f v, vec3f n) {
+  vec3f product = n;
+
+  float dot_product = dot(v, n);
+  product = product * 2 * dot_product;
+  product = v - product;
+  *dst = product;
+}
+
+/**
+ * Calculates the radial attenuation value.
+ *
+ * @param light - The light object
+ * @param distance - The distance from the light to the object
+ * @return - radial attenuation value
+ */
+inline __device__ float radial_attenuation(Light light, float distance) {
+  return 1.0 / (light.radial_coef.x + light.radial_coef.y * distance +
+                light.radial_coef.z * powf(distance, 2));
+}
+
+/**
+ * Calculates the angular attenuation value.
+ *
+ * @param light - The light object
+ * @param object_point - The object's intersection point
+ * @return - angular attenuation value
+ */
+inline __device__ float angular_attenuation(Light light, vec3f object_point) {
+
+  if (light.type != SPOTLIGHT) {
+    return 1.0;
+  }
+
+  vec3f v_object = object_point - light.position;
+  v_object = normalize(v_object);
+
+  const float alpha = dot(v_object, light.direction);
+
+  if (alpha < light.cos_theta) {
+    return 0.0;
+  }
+
+  return powf(alpha, light.a0);
+}
+
+/**
+ * Calculates the diffuse light color value.
+ *
+ * @param return_color - The diffuse light color value
+ * @param light - The light object
+ * @param object_color - The object's diffuse color
+ * @param surface_normal - The object's normal value
+ * @param light_vector - The lights direction vector
+ */
+inline __device__ void diffuse_light(vec3f *return_color,
+                                     Light light,
+                                     vec3f object_color,
+                                     vec3f surface_normal,
+                                     vec3f light_vector) {
+  const float theta = dot(surface_normal, light_vector);
+
+  if (theta <= 0.0) {
+    set_to_black(return_color);
+  }
+  else {
+    *return_color = object_color * light.color * theta;
+  }
+}
+
+/**
+ * Calculates the specular light color value.
+ *
+ * @param return_color - The specular light color value
+ * @param light - The light object
+ * @param object_color - The object's specular color
+ * @param surface_normal - The object's normal value
+ * @param light_vector - The lights direction vector
+ * @param view - The view vector
+ */
+inline __device__ void specular_light(vec3f *return_color,
+                                      Light light,
+                                      vec3f object_color,
+                                      vec3f surface_normal,
+                                      vec3f light_vector,
+                                      vec3f view) {
+
+  vec3f temp = view;
+  temp = temp * -1;
+
+  const float theta = dot(surface_normal, light_vector);
+  if (theta <= 0.0) {
+    set_to_black(return_color);
+    return;
+  }
+
+  vec3f reflection;
+  reflect(&reflection, light_vector, surface_normal);
+
+  const float angle = dot(temp, reflection);
+
+  if (angle > 0) {
+    set_to_black(return_color);
+    return;
+  }
+
+  *return_color = object_color * light.color * powf(angle, 20);
+}
+
 OPTIX_RAYGEN_PROGRAM(simpleRayGen)() {
   const RayGenData &self = owl::getProgramData<RayGenData>();
   const vec2i pixelID = owl::getLaunchIndex();
-  if (pixelID == owl::vec2i(0)) {
-    printf("%sHello OptiX From your First RayGen Program%s\n", OWL_TERMINAL_CYAN,
-           OWL_TERMINAL_DEFAULT);
-  }
-  PerRayData prd;
   owl::Ray ray;
   ray.origin = vec3f(0.f, 0.f, 0.f);
-  int view_plane_center[3] = {0, 0, -1};
+  vec3i view_plane_center = vec3i(0, 0, -1);
 
-  ray.direction[0] =
-      view_plane_center[0] - (self.camera_width / 2.0) + self.pixel_width * (pixelID.x + 0.5);
-  ray.direction[1] =
-      view_plane_center[1] + (self.camera_height / 2.0) - self.pixel_height * (pixelID.y + 0.5);
-  ray.direction[2] = view_plane_center[2];
+  ray.direction.x =
+      view_plane_center.x - (self.camera_width / 2.0) + self.pixel_width * (pixelID.x + 0.5);
+  ray.direction.y =
+      view_plane_center.y + (self.camera_height / 2.0) - self.pixel_height * (pixelID.y + 0.5);
+  ray.direction.z = view_plane_center.z;
 
   ray.direction = normalize(ray.direction);
 
-  vec3f color;
+  PerRayData prd;
+  prd.distance = -1;
+  prd.primId = -1;
+  prd.prev_intersection = NULL;
   owl::traceRay(/*accel to trace against*/ self.world,
                 /*the ray to trace*/ ray,
-                /*prd*/ color);
+                /*prd*/ prd);
+
+  vec3f color = vec3f(0, 0, 0);
+
+  if (prd.distance != -1) {
+    vec3f diffuse_output;
+    vec3f specular_output;
+    float light_obj_dist;
+    owl::Ray light_ray;
+    float rad_atten;
+    float ang_atten;
+    vec3f temp;
+    for (int i = 0; i < self.num_lights; i++) {
+      light_ray.direction = self.lights[i].position;
+      light_ray.origin = prd.intersection;
+      light_ray.direction = normalize(light_ray.direction);
+      PerRayData new_prd;
+      new_prd.distance = -1;
+      new_prd.prev_intersection = &prd;
+
+      owl::traceRay(/*accel to trace against*/ self.world,
+                    /*the ray to trace*/ light_ray,
+                    /*prd*/ new_prd,
+                    /*only CH*/ OPTIX_RAY_FLAG_DISABLE_ANYHIT);
+
+      if (new_prd.distance == -1) {
+        temp = self.lights[i].position - prd.intersection;
+        light_obj_dist = pow(temp.x, 2) + pow(temp.y, 2) + pow(temp.z, 2);
+        light_obj_dist = pow(light_obj_dist, 0.5);
+
+        rad_atten = radial_attenuation(self.lights[i], light_obj_dist);
+        ang_atten = angular_attenuation(self.lights[i], prd.intersection);
+        diffuse_light(&diffuse_output, self.lights[i], prd.diffuse_color, prd.normal,
+                      light_ray.direction);
+        specular_light(&specular_output, self.lights[i], prd.specular_color, prd.normal,
+                       light_ray.direction, ray.direction);
+
+        // TODO: Why are the pixels so dark?
+        color += (diffuse_output + specular_output) * rad_atten * ang_atten;
+      }
+    }
+  }
+  else {
+    color = prd.diffuse_color;
+  }
 
   float color_vector[3] = {color.x, color.y, color.z};
-  self.pixmap[(pixelID.y * self.width + pixelID.x) * 3] = color_vector[0] * 255;
-  self.pixmap[(pixelID.y * self.width + pixelID.x) * 3 + 1] = color_vector[1] * 255;
-  self.pixmap[(pixelID.y * self.width + pixelID.x) * 3 + 2] = color_vector[2] * 255;
+  self.pixmap[(pixelID.y * self.width + pixelID.x) * 3] = clamp(color_vector[0] * 255, 0, 255);
+  self.pixmap[(pixelID.y * self.width + pixelID.x) * 3 + 1] = clamp(color_vector[1] * 255, 0, 255);
+  self.pixmap[(pixelID.y * self.width + pixelID.x) * 3 + 2] = clamp(color_vector[2] * 255, 0, 255);
 }
 
 OPTIX_MISS_PROGRAM(miss)() {
   const vec2i pixelID = owl::getLaunchIndex();
-
-  const MissProgData &self = owl::getProgramData<MissProgData>();
-
-  vec3f &prd = owl::getPRD<vec3f>();
-  int pattern = (pixelID.x / 8) ^ (pixelID.y / 8);
-  prd = vec3f(0, 0, 0);
+  PerRayData &prd = owl::getPRD<PerRayData>();
+  set_to_black(&prd.diffuse_color);
+  set_to_black(&prd.specular_color);
+  prd.distance = -1;
+  prd.primId = -1;
 }
 
 OPTIX_INTERSECT_PROGRAM(Spheres)() {
-  const int primID = optixGetPrimitiveIndex();
-  const auto &self = owl::getProgramData<SpheresList>().primitives[primID];
+  const int primId = optixGetPrimitiveIndex();
+  const auto &self = owl::getProgramData<SpheresList>().primitives[primId];
+  PerRayData &prd = owl::getPRD<PerRayData>();
+
+  // Do not intersect with self
+  if ((prd.prev_intersection != NULL) && (primId == prd.prev_intersection->primId) &&
+      (prd.prev_intersection->shape_type == SPHERE)) {
+    return;
+  }
 
   const vec3f origin = optixGetWorldRayOrigin();
   const vec3f direction = optixGetWorldRayDirection();
@@ -87,34 +280,56 @@ OPTIX_INTERSECT_PROGRAM(Spheres)() {
     if (temp < hit_t && temp > tmin) {
       hit_t = temp;
     }
-    vec3f &prd = owl::getPRD<vec3f>();
-    prd = self.diffuse_color;
   }
   if (hit_t < optixGetRayTmax()) {
     optixReportIntersection(hit_t, 0);
+    prd.distance = hit_t;
   }
 }
 
-OPTIX_BOUNDS_PROGRAM(Spheres)(const void *geomData, box3f &primBounds, const int primID) {
+OPTIX_BOUNDS_PROGRAM(Spheres)(const void *geomData, box3f &primBounds, const int primId) {
   const SpheresList &self = *(const SpheresList *) geomData;
-  const Sphere sphere = self.primitives[primID];
+  const Sphere sphere = self.primitives[primId];
   primBounds =
       box3f().extend(sphere.position - sphere.radius).extend(sphere.position + sphere.radius);
 }
 
 OPTIX_CLOSEST_HIT_PROGRAM(Spheres)() {
-  // const int primID = optixGetPrimitiveIndex();
-  // const auto &self = owl::getProgramData<SpheresList>().primitives[primID];
-  // PerRayData &prd = owl::getPRD<PerRayData>();
-  // prd = self.diffuse_color;
+  const int primId = optixGetPrimitiveIndex();
+  const auto &self = owl::getProgramData<SpheresList>().primitives[primId];
+  PerRayData &prd = owl::getPRD<PerRayData>();
+  prd.primId = primId;
+  prd.diffuse_color = self.diffuse_color;
+  prd.specular_color = self.specular_color;
+  const vec3f origin = optixGetWorldRayOrigin();
+  const vec3f direction = optixGetWorldRayDirection();
+  prd.intersection = origin + direction * prd.distance;
+  float temp = 1.0 / self.radius;
+  prd.normal = (prd.intersection - self.position) * temp;
+  prd.normal = normalize(prd.normal);
+  prd.shape_type = SPHERE;
+  // PerRayData new_prd;
+
+  // owl::traceRay(/*accel to trace against*/ optixLaunchParams.world,
+  //               /*the ray to trace*/ refl_ray,
+  //               /*prd*/ new_prd,
+  //               /*only CH*/ OPTIX_RAY_FLAG_DISABLE_ANYHIT);
 }
 
 OPTIX_INTERSECT_PROGRAM(Planes)() {
-  const int primID = optixGetPrimitiveIndex();
-  const auto &self = owl::getProgramData<PlanesList>().primitives[primID];
+  const int primId = optixGetPrimitiveIndex();
+  const auto &self = owl::getProgramData<PlanesList>().primitives[primId];
+  PerRayData &prd = owl::getPRD<PerRayData>();
+
+  // Do not intersect with self
+  if ((prd.prev_intersection != NULL) && (primId == prd.prev_intersection->primId) &&
+      (prd.prev_intersection->shape_type == PLANE)) {
+    return;
+  }
 
   const vec3f origin = optixGetWorldRayOrigin();
   const vec3f direction = optixGetWorldRayDirection();
+
   float hit_t = optixGetRayTmax();
   const float tmin = optixGetRayTmin();
 
@@ -134,30 +349,48 @@ OPTIX_INTERSECT_PROGRAM(Planes)() {
   if (t < hit_t && t > tmin) {
     hit_t = t;
   }
-  vec3f &prd = owl::getPRD<vec3f>();
-  prd = self.diffuse_color;
 
   if (hit_t < optixGetRayTmax()) {
     optixReportIntersection(hit_t, 0);
+    prd.distance = hit_t;
   }
 }
 
 // TODO: what does this do exactly?
-OPTIX_BOUNDS_PROGRAM(Planes)(const void *geomData, box3f &primBounds, const int primID) {
+OPTIX_BOUNDS_PROGRAM(Planes)(const void *geomData, box3f &primBounds, const int primId) {
   const PlanesList &self = *(const PlanesList *) geomData;
-  const Plane plane = self.primitives[primID];
+  const Plane plane = self.primitives[primId];
   primBounds = box3f(vec3f(-1.f, -1.f, 0.f), vec3f(+1.f, +1.f, +1.f));
 }
 
 OPTIX_CLOSEST_HIT_PROGRAM(Planes)() {
+  const int primId = optixGetPrimitiveIndex();
+  const auto &self = owl::getProgramData<PlanesList>().primitives[primId];
+  PerRayData &prd = owl::getPRD<PerRayData>();
+  prd.primId = primId;
+  prd.diffuse_color = self.diffuse_color;
+  prd.specular_color = self.specular_color;
+  const vec3f origin = optixGetWorldRayOrigin();
+  const vec3f direction = optixGetWorldRayDirection();
+  prd.intersection = origin + direction * prd.distance;
+  prd.normal = self.normal;
+  prd.shape_type = PLANE;
 }
 
 OPTIX_INTERSECT_PROGRAM(Quadrics)() {
-  const int primID = optixGetPrimitiveIndex();
-  const auto &self = owl::getProgramData<QuadricsList>().primitives[primID];
+  const int primId = optixGetPrimitiveIndex();
+  const auto &self = owl::getProgramData<QuadricsList>().primitives[primId];
+  PerRayData &prd = owl::getPRD<PerRayData>();
+
+  // Do not intersect with self
+  if ((prd.prev_intersection != NULL) && (primId == prd.prev_intersection->primId) &&
+      (prd.prev_intersection->shape_type == QUADRIC)) {
+    return;
+  }
 
   const vec3f origin = optixGetWorldRayOrigin();
   const vec3f direction = optixGetWorldRayDirection();
+
   float hit_t = optixGetRayTmax();
   const float tmin = optixGetRayTmin();
 
@@ -197,20 +430,45 @@ OPTIX_INTERSECT_PROGRAM(Quadrics)() {
   if (t < hit_t && t > tmin) {
     hit_t = t;
   }
-  vec3f &prd = owl::getPRD<vec3f>();
-  prd = self.diffuse_color;
 
   if (hit_t < optixGetRayTmax()) {
     optixReportIntersection(hit_t, 0);
+    prd.distance = hit_t;
   }
 }
 
 // TODO: what does this do exactly?
-OPTIX_BOUNDS_PROGRAM(Quadrics)(const void *geomData, box3f &primBounds, const int primID) {
+OPTIX_BOUNDS_PROGRAM(Quadrics)(const void *geomData, box3f &primBounds, const int primId) {
   const QuadricsList &self = *(const QuadricsList *) geomData;
-  const Quadric quadric = self.primitives[primID];
+  const Quadric quadric = self.primitives[primId];
   primBounds = box3f(vec3f(-1.f, -1.f, 0.f), vec3f(+1.f, +1.f, +1.f));
 }
 
 OPTIX_CLOSEST_HIT_PROGRAM(Quadrics)() {
+  const int primId = optixGetPrimitiveIndex();
+  const auto &self = owl::getProgramData<QuadricsList>().primitives[primId];
+  PerRayData &prd = owl::getPRD<PerRayData>();
+  prd.primId = primId;
+  prd.diffuse_color = self.diffuse_color;
+  prd.specular_color = self.specular_color;
+  const vec3f origin = optixGetWorldRayOrigin();
+  const vec3f direction = optixGetWorldRayDirection();
+  prd.intersection = origin + direction * prd.distance;
+
+  prd.normal.x = 2.0 * self.a * prd.intersection.x + self.d * prd.intersection.y +
+                 self.e * prd.intersection.z + self.g;
+
+  prd.normal.y = 2.0 * self.b * prd.intersection.y + self.d * prd.intersection.x +
+                 self.f * prd.intersection.z + self.h;
+
+  prd.normal.z = 2.0 * self.c * prd.intersection.z + self.e * prd.intersection.x +
+                 self.f * prd.intersection.y + self.i;
+
+  prd.normal = normalize(prd.normal);
+
+  if (dot(prd.normal, direction) > 0) {
+    prd.normal *= -1.0;
+  }
+
+  prd.shape_type = QUADRIC;
 }

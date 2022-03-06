@@ -81,7 +81,8 @@ int main(int argc, char **argv) {
   photo_data.size = photo_data.width * photo_data.height * 3;
   photo_data.pixmap = (uint8_t *) malloc(photo_data.size);
 
-  // Create vector of spheres only for OWL
+  // TODO: Rrefactor to use parse.cpp
+  // Separate shapes into separate vectors
   std::vector<Sphere> spheres;
   std::vector<Plane> planes;
   std::vector<Quadric> quadrics;
@@ -148,6 +149,32 @@ int main(int argc, char **argv) {
       quadric.ior = json_struct->shapes_list[count].ior;
       quadrics.push_back(quadric);
     }
+  }
+
+  Light *lights = (Light *) malloc(json_struct->num_lights * sizeof(Light));
+  for (int count = 0; count < json_struct->num_lights; count++) {
+    Light light;
+    light.position = vec3f(json_struct->lights_list[count].position[0],
+                           json_struct->lights_list[count].position[1],
+                           json_struct->lights_list[count].position[2]);
+    light.color =
+        vec3f(json_struct->lights_list[count].color[0], json_struct->lights_list[count].color[1],
+              json_struct->lights_list[count].color[2]);
+
+    light.radial_coef = vec3f(json_struct->lights_list[count].radial_coef[0],
+                              json_struct->lights_list[count].radial_coef[1],
+                              json_struct->lights_list[count].radial_coef[2]);
+
+    light.direction = vec3f(json_struct->lights_list[count].direction[0],
+                            json_struct->lights_list[count].direction[1],
+                            json_struct->lights_list[count].direction[2]);
+
+    light.theta = json_struct->lights_list[count].theta;
+    light.cos_theta = json_struct->lights_list[count].cos_theta;
+    light.a0 = json_struct->lights_list[count].a0;
+    light.type = json_struct->lights_list[count].type;
+
+    lights[count] = light;
   }
 
   float pixel_height = json_struct->camera_height / photo_data.height;
@@ -240,16 +267,7 @@ int main(int argc, char **argv) {
   // -------------------------------------------------------
   // set up miss prog
   // -------------------------------------------------------
-  OWLVarDecl missProgVars[] = {{"color0", OWL_FLOAT3, OWL_OFFSETOF(MissProgData, color0)},
-                               {"color1", OWL_FLOAT3, OWL_OFFSETOF(MissProgData, color1)},
-                               {/* sentinel to mark end of list */}};
-  // ----------- create object  ----------------------------
-  OWLMissProg missProg =
-      owlMissProgCreate(owl, module, "miss", sizeof(MissProgData), missProgVars, -1);
-
-  // ----------- set variables  ----------------------------
-  owlMissProgSet3f(missProg, "color0", owl3f {.8f, 0.f, 0.f});
-  owlMissProgSet3f(missProg, "color1", owl3f {.8f, .8f, .8f});
+  OWLMissProg missProg = owlMissProgCreate(owl, module, "miss", 0, NULL, -1);
 
   // Allocate room for one RayGen shader, create it, and
   // hold on to it with the "owl" context
@@ -261,6 +279,8 @@ int main(int argc, char **argv) {
                              {"camera_width", OWL_FLOAT, OWL_OFFSETOF(RayGenData, camera_width)},
                              {"camera_height", OWL_FLOAT, OWL_OFFSETOF(RayGenData, camera_height)},
                              {"world", OWL_GROUP, OWL_OFFSETOF(RayGenData, world)},
+                             {"lights", OWL_BUFPTR, OWL_OFFSETOF(RayGenData, lights)},
+                             {"num_lights", OWL_INT, OWL_OFFSETOF(RayGenData, num_lights)},
                              {/* sentinel: */ nullptr}};
 
   OWLRayGen rayGen =
@@ -276,6 +296,9 @@ int main(int argc, char **argv) {
                                                     /*type:*/ OWL_UCHAR,
                                                     /*size:*/ photo_data.size);
 
+  OWLBuffer lightsBuffer =
+      owlDeviceBufferCreate(owl, OWL_USER_TYPE(lights[0]), json_struct->num_lights, lights);
+
   // ------------------------------------------------------------------
   // build Shader Binding Table (SBT) required to trace the groups
   // ------------------------------------------------------------------
@@ -287,6 +310,8 @@ int main(int argc, char **argv) {
   owlRayGenSet1f(rayGen, "camera_height", json_struct->camera_height);
   owlRayGenSet1f(rayGen, "camera_width", json_struct->camera_width);
   owlRayGenSetGroup(rayGen, "world", world);
+  owlRayGenSetBuffer(rayGen, "lights", lightsBuffer);
+  owlRayGenSet1i(rayGen, "num_lights", json_struct->num_lights);
 
   // (re-)builds all optix programs, with current pipeline settings
   owlBuildPrograms(owl);

@@ -16,6 +16,7 @@
 
 #pragma once
 
+#include "objects.h"
 #include "v3math.h"
 
 #include <owl/common/math/vec.h>
@@ -23,14 +24,16 @@
 
 using namespace owl;
 
-/* variables for the triangle mesh geometry */
-struct TrianglesGeomData {
-  /*! base color we use for the entire mesh */
+// TODO: Combine objets.h and these structs
+struct Light {
+  vec3f position;
   vec3f color;
-  /*! array/buffer of vertex indices */
-  vec3i *index;
-  /*! array/buffer of vertex positions */
-  vec3f *vertex;
+  vec3f radial_coef;
+  float theta;
+  float cos_theta;
+  float a0;
+  vec3f direction;
+  light_type_t type;
 };
 
 struct Sphere {
@@ -93,15 +96,17 @@ struct RayGenData {
   float camera_height;
   float camera_width;
   OptixTraversableHandle world;
+  Light *lights;
+  int num_lights;
 };
 
 struct PerRayData {
-  vec3f color;
+  vec3f diffuse_color;
+  vec3f specular_color;
   float distance;
-};
-
-/* variables for the miss program */
-struct MissProgData {
-  vec3f color0;
-  vec3f color1;
+  vec3f intersection;
+  vec3f normal;
+  int primId;
+  shape_type_t shape_type;
+  PerRayData *prev_intersection;
 };
