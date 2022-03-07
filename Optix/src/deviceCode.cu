@@ -203,6 +203,7 @@ OPTIX_RAYGEN_PROGRAM(simpleRayGen)() {
     for (int i = 0; i < self.num_lights; i++) {
       light_ray.direction = self.lights[i].position;
       light_ray.origin = prd.intersection;
+      light_ray.direction = light_ray.direction - light_ray.origin;
       light_ray.direction = normalize(light_ray.direction);
       PerRayData new_prd;
       new_prd.distance = -1;
@@ -224,6 +225,7 @@ OPTIX_RAYGEN_PROGRAM(simpleRayGen)() {
                       light_ray.direction);
         specular_light(&specular_output, self.lights[i], prd.specular_color, prd.normal,
                        light_ray.direction, ray.direction);
+        specular_output = prd.diffuse_color;
 
         // TODO: Why are the pixels so dark?
         color += (diffuse_output + specular_output) * rad_atten * ang_atten;
