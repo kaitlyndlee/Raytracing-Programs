@@ -204,6 +204,9 @@ OPTIX_RAYGEN_PROGRAM(simpleRayGen)() {
       light_ray.direction = self.lights[i].position;
       light_ray.origin = prd.intersection;
       light_ray.direction = light_ray.direction - light_ray.origin;
+      light_obj_dist = pow(light_ray.direction.x, 2) + pow(light_ray.direction.y, 2) +
+                       pow(light_ray.direction.z, 2);
+      light_obj_dist = powf(light_obj_dist, 0.5);
       light_ray.direction = normalize(light_ray.direction);
       PerRayData new_prd;
       new_prd.distance = -1;
@@ -215,25 +218,19 @@ OPTIX_RAYGEN_PROGRAM(simpleRayGen)() {
                     /*only CH*/ OPTIX_RAY_FLAG_DISABLE_ANYHIT);
 
       if (new_prd.distance == -1) {
-        temp = self.lights[i].position - prd.intersection;
-        light_obj_dist = pow(temp.x, 2) + pow(temp.y, 2) + pow(temp.z, 2);
-        light_obj_dist = pow(light_obj_dist, 0.5);
-
         rad_atten = radial_attenuation(self.lights[i], light_obj_dist);
         ang_atten = angular_attenuation(self.lights[i], prd.intersection);
         diffuse_light(&diffuse_output, self.lights[i], prd.diffuse_color, prd.normal,
                       light_ray.direction);
         specular_light(&specular_output, self.lights[i], prd.specular_color, prd.normal,
                        light_ray.direction, ray.direction);
-        specular_output = prd.diffuse_color;
 
-        // TODO: Why are the pixels so dark?
         color += (diffuse_output + specular_output) * rad_atten * ang_atten;
       }
     }
   }
   else {
-    color = prd.diffuse_color;
+    set_to_black(&color);
   }
 
   float color_vector[3] = {color.x, color.y, color.z};
@@ -264,8 +261,9 @@ OPTIX_INTERSECT_PROGRAM(Spheres)() {
 
   const vec3f origin = optixGetWorldRayOrigin();
   const vec3f direction = optixGetWorldRayDirection();
-  float hit_t = optixGetRayTmax();
+  float hit_t = 0;
   const float tmin = optixGetRayTmin();
+  const float tmax = optixGetRayTmax();
 
   const vec3f origin_to_pos = origin - self.position;
 
@@ -278,12 +276,13 @@ OPTIX_INTERSECT_PROGRAM(Spheres)() {
     return;
   }
   else {
-    float temp = (-b + sqrtf(discriminant)) / (2.0 * a);
-    if (temp < hit_t && temp > tmin) {
-      hit_t = temp;
+    hit_t = (-b - sqrtf(discriminant)) / (2.0 * a);
+
+    if (hit_t < 0) {
+      hit_t = (-b + sqrtf(discriminant)) / (2.0 * a);
     }
   }
-  if (hit_t < optixGetRayTmax()) {
+  if (hit_t < tmax) {
     optixReportIntersection(hit_t, 0);
     prd.distance = hit_t;
   }
@@ -310,12 +309,6 @@ OPTIX_CLOSEST_HIT_PROGRAM(Spheres)() {
   prd.normal = (prd.intersection - self.position) * temp;
   prd.normal = normalize(prd.normal);
   prd.shape_type = SPHERE;
-  // PerRayData new_prd;
-
-  // owl::traceRay(/*accel to trace against*/ optixLaunchParams.world,
-  //               /*the ray to trace*/ refl_ray,
-  //               /*prd*/ new_prd,
-  //               /*only CH*/ OPTIX_RAY_FLAG_DISABLE_ANYHIT);
 }
 
 OPTIX_INTERSECT_PROGRAM(Planes)() {
