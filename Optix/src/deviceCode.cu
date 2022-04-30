@@ -24,15 +24,6 @@
 
 #define MAX_DEPTH 50
 
-// inline __device__ vec3f tracePath(const RayGenData &self, owl::Ray &ray, PerRayData &prd) {
-//   for (int i = 0; i < MAX_DEPTH; i++) {
-//       owl::traceRay(/*accel to trace against*/ self.world,
-//                 /*the ray to trace*/ ray,
-//                 /*prd*/ color);
-
-//   }
-// }
-
 inline __device__ void set_to_black(vec3f *input) {
   input->x = 0;
   input->y = 0;
@@ -167,6 +158,139 @@ inline __device__ void specular_light(vec3f *return_color,
   *return_color = object_color * light.color * powf(angle, 20);
 }
 
+inline __device__ vec3f calc_color(const RayGenData &self, owl::Ray &ray, PerRayData &prd) {
+  vec3f color = vec3f(0, 0, 0);
+  float opacity = 1.0 - prd.reflectivity - prd.refractivity;
+  if (opacity <= 0) {
+    set_to_black(&color);
+    return color;
+  }
+
+  vec3f diffuse_output;
+  vec3f specular_output;
+  float light_obj_dist;
+  owl::Ray light_ray;
+  float rad_atten;
+  float ang_atten;
+
+  for (int i = 0; i < self.num_lights; i++) {
+    light_ray.direction = self.lights[i].position;
+    light_ray.origin = prd.intersection;
+    light_ray.direction = light_ray.direction - light_ray.origin;
+    light_obj_dist = length(light_ray.direction);
+    light_ray.direction = normalize(light_ray.direction);
+    PerRayData new_prd;
+    new_prd.distance = -1;
+    new_prd.prev_intersection = &prd;
+
+    owl::traceRay(/*accel to trace against*/ self.world,
+                  /*the ray to trace*/ light_ray,
+                  /*prd*/ new_prd,
+                  /*only CH*/ OPTIX_RAY_FLAG_DISABLE_ANYHIT);
+
+    // Not in the shadow of another shape
+    if (new_prd.primId == -1) {
+      rad_atten = radial_attenuation(self.lights[i], light_obj_dist);
+      ang_atten = angular_attenuation(self.lights[i], prd.intersection);
+      diffuse_light(&diffuse_output, self.lights[i], prd.diffuse_color, prd.normal,
+                    light_ray.direction);
+      specular_light(&specular_output, self.lights[i], prd.specular_color, prd.normal,
+                     light_ray.direction, ray.direction);
+
+      color += (diffuse_output + specular_output) * rad_atten * ang_atten;
+    }
+  }
+  return color * opacity;
+}
+
+// TODO: FIX
+inline __device__ vec3f iterative_shoot(const RayGenData &self, owl::Ray &ray) {
+  printf("Direction: (%f, %f, %f)\n", ray.direction.x, ray.direction.y, ray.direction.z);
+  PerRayData prd;
+  prd.distance = -1;
+  prd.primId = -1;
+  prd.prev_intersection = NULL;
+  owl::traceRay(/*accel to trace against*/ self.world,
+                /*the ray to trace*/ ray,
+                /*prd*/ prd);
+
+  vec3f color;
+  set_to_black(&color);
+  if (prd.primId == -1) {
+    printf("\tIn no intersection\n");
+    set_to_black(&color);
+    return color;
+  }
+
+  PerRayData next_prd = prd;
+  next_prd.prev_intersection = &prd;
+  owl::Ray next_ray;
+  next_ray.direction = ray.direction;
+  next_ray.origin = prd.intersection;
+
+  vec3f reflection_vector;
+  vec3f temp_color;
+  set_to_black(&temp_color);
+  float total_refl = prd.reflectivity;
+
+  for (int i = 0; i < MAX_DEPTH; i++) {
+    printf("\tPrim ID: %d, type: %d, normal: (%f, %f, %f)\n", 
+    next_prd.primId, next_prd.shape_type, next_prd.normal.x, next_prd.normal.y, next_prd.normal.z);
+    if (next_prd.reflectivity > 0) {
+      reflect(&reflection_vector, next_ray.direction, next_prd.normal);
+      reflection_vector = normalize(reflection_vector);
+      next_ray.direction = reflection_vector;
+      owl::traceRay(/*accel to trace against*/ self.world,
+                    /*the ray to trace*/ next_ray,
+                    /*prd*/ next_prd);
+        
+      if (next_prd.primId == -1) {
+        break;
+      }
+
+      // Calculate reflection color
+      temp_color = calc_color(self, next_ray, next_prd);
+      temp_color *= total_refl;
+      total_refl *= next_prd.reflectivity;
+      color += temp_color;
+      
+      // Prepare next ray
+      next_prd.prev_intersection = &next_prd;
+      next_ray.origin = next_prd.intersection;
+    }
+    else {
+      printf("\tReflectivity: %f\n", next_prd.reflectivity);
+      break;
+    }
+  }
+
+  temp_color = calc_color(self, ray, prd);
+  color += temp_color;
+  return color;
+}
+
+OPTIX_RAYGEN_PROGRAM(rayGen)() {
+  const RayGenData &self = owl::getProgramData<RayGenData>();
+  const vec2i pixelID = owl::getLaunchIndex();
+  owl::Ray ray;
+  ray.origin = vec3f(0.f, 0.f, 0.f);
+  vec3i view_plane_center = vec3i(0, 0, -1);
+
+  ray.direction.x =
+      view_plane_center.x - (self.camera_width / 2.0) + self.pixel_width * (pixelID.x + 0.5);
+  ray.direction.y =
+      view_plane_center.y + (self.camera_height / 2.0) - self.pixel_height * (pixelID.y + 0.5);
+  ray.direction.z = view_plane_center.z;
+
+  ray.direction = normalize(ray.direction);
+
+  vec3f color = iterative_shoot(self, ray);
+  float color_vector[3] = {color.x, color.y, color.z};
+  self.pixmap[(pixelID.y * self.width + pixelID.x) * 3] = clamp(color_vector[0] * 255, 0, 255);
+  self.pixmap[(pixelID.y * self.width + pixelID.x) * 3 + 1] = clamp(color_vector[1] * 255, 0, 255);
+  self.pixmap[(pixelID.y * self.width + pixelID.x) * 3 + 2] = clamp(color_vector[2] * 255, 0, 255);
+}
+
 OPTIX_RAYGEN_PROGRAM(simpleRayGen)() {
   const RayGenData &self = owl::getProgramData<RayGenData>();
   const vec2i pixelID = owl::getLaunchIndex();
@@ -192,7 +316,7 @@ OPTIX_RAYGEN_PROGRAM(simpleRayGen)() {
 
   vec3f color = vec3f(0, 0, 0);
 
-  if (prd.distance != -1) {
+  if (prd.primId != -1) {
     vec3f diffuse_output;
     vec3f specular_output;
     float light_obj_dist;
@@ -204,9 +328,7 @@ OPTIX_RAYGEN_PROGRAM(simpleRayGen)() {
       light_ray.direction = self.lights[i].position;
       light_ray.origin = prd.intersection;
       light_ray.direction = light_ray.direction - light_ray.origin;
-      light_obj_dist = pow(light_ray.direction.x, 2) + pow(light_ray.direction.y, 2) +
-                       pow(light_ray.direction.z, 2);
-      light_obj_dist = powf(light_obj_dist, 0.5);
+      light_obj_dist = length(light_ray.direction);
       light_ray.direction = normalize(light_ray.direction);
       PerRayData new_prd;
       new_prd.distance = -1;
@@ -217,14 +339,13 @@ OPTIX_RAYGEN_PROGRAM(simpleRayGen)() {
                     /*prd*/ new_prd,
                     /*only CH*/ OPTIX_RAY_FLAG_DISABLE_ANYHIT);
 
-      if (new_prd.distance == -1) {
+      if (new_prd.primId == -1) {
         rad_atten = radial_attenuation(self.lights[i], light_obj_dist);
         ang_atten = angular_attenuation(self.lights[i], prd.intersection);
         diffuse_light(&diffuse_output, self.lights[i], prd.diffuse_color, prd.normal,
                       light_ray.direction);
         specular_light(&specular_output, self.lights[i], prd.specular_color, prd.normal,
                        light_ray.direction, ray.direction);
-
         color += (diffuse_output + specular_output) * rad_atten * ang_atten;
       }
     }
@@ -302,10 +423,12 @@ OPTIX_CLOSEST_HIT_PROGRAM(Spheres)() {
   prd.primId = primId;
   prd.diffuse_color = self.diffuse_color;
   prd.specular_color = self.specular_color;
+  prd.reflectivity = self.reflectivity;
+  prd.refractivity = self.refractivity;
   const vec3f origin = optixGetWorldRayOrigin();
   const vec3f direction = optixGetWorldRayDirection();
   prd.intersection = origin + direction * prd.distance;
-  float temp = 1.0 / self.radius;
+  const float temp = 1.0 / self.radius;
   prd.normal = (prd.intersection - self.position) * temp;
   prd.normal = normalize(prd.normal);
   prd.shape_type = SPHERE;
@@ -365,6 +488,8 @@ OPTIX_CLOSEST_HIT_PROGRAM(Planes)() {
   prd.primId = primId;
   prd.diffuse_color = self.diffuse_color;
   prd.specular_color = self.specular_color;
+  prd.reflectivity = self.reflectivity;
+  prd.refractivity = self.refractivity;
   const vec3f origin = optixGetWorldRayOrigin();
   const vec3f direction = optixGetWorldRayDirection();
   prd.intersection = origin + direction * prd.distance;
@@ -446,6 +571,8 @@ OPTIX_CLOSEST_HIT_PROGRAM(Quadrics)() {
   prd.primId = primId;
   prd.diffuse_color = self.diffuse_color;
   prd.specular_color = self.specular_color;
+  prd.reflectivity = self.reflectivity;
+  prd.refractivity = self.refractivity;
   const vec3f origin = optixGetWorldRayOrigin();
   const vec3f direction = optixGetWorldRayDirection();
   prd.intersection = origin + direction * prd.distance;

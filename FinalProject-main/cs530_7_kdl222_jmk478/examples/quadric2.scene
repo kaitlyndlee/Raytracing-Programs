@@ -1,0 +1,5 @@
+camera, width: 2, height: 2
+sphere, diffuse_color: [1, 1, 0], specular_color: [0.25, 0.5, 0.35], position: [0, 0, -5], radius: 1, reflectivity: 0, refractivity: 0.3, ior: 1.33
+quadric, diffuse_color: [1.25, 0.5, 0], a: 1, b: -1, c: 1, d: 0, e: 0, f: 0, g: 0, h: 0, i: 20, j: 100, reflectivity: 0.55
+quadric, diffuse_color: [0.29, 0, 0.5], a: -1, b: 1, c: 1, d: 0, e: 0, f: 0, g: 0, h: 0, i: 20, j: 100, reflectivity: 0.55
+light, color: [2, 2, 2], radial-a2: 0.05, radial-a1: 0.125, radial-a0: 0.125, position: [0, 0, 0]

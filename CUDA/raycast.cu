@@ -179,6 +179,7 @@ __device__ void iterative_shoot(json_data_t *json_struct,
                                 float *ray_direction,
                                 float *out_color,
                                 int skip_index) {
+  printf("Direction: (%f, %f, %f)\n", ray_direction[0], ray_direction[1], ray_direction[2]);
   shape_t *nearest_object = NULL;
   int nearest_object_index = -1;
   float intersection[3];
@@ -214,6 +215,10 @@ __device__ void iterative_shoot(json_data_t *json_struct,
 
   int iter = 0;
   while (iter < MAX_ITER) {
+
+    printf("\tPrim ID: %d, intersection: (%f, %f, %f), normal: (%f, %f, %f)\n", 
+    next_nearest_object_index, next_intersecion[0], next_intersecion[1], next_intersecion[2], next_normal[0], next_normal[1], next_normal[2]);
+    
     // calculate reflection color
     if (next_nearest_object->reflectivity > 0) {
       v3_reflect(reflection_vector, next_ray_direction, next_normal);
@@ -294,7 +299,6 @@ __device__ void calc_color(json_data_t *json_struct,
 
         specular_light(specular_output, &json_struct->lights_list[lights], object.specular_color,
                        normal, light_direction, ray_direction);
-        specular_output = diffuse_output;
 
         out_color[0] += (diffuse_output[0] + specular_output[0]) * rad_atten * ang_atten;
         out_color[1] += (diffuse_output[1] + specular_output[1]) * rad_atten * ang_atten;

@@ -103,6 +103,8 @@ struct RayGenData {
 struct PerRayData {
   vec3f diffuse_color;
   vec3f specular_color;
+  float reflectivity;
+  float refractivity;
   float distance;
   vec3f intersection;
   vec3f normal;

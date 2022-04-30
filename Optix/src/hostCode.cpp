@@ -284,7 +284,7 @@ int main(int argc, char **argv) {
                              {/* sentinel: */ nullptr}};
 
   OWLRayGen rayGen =
-      owlRayGenCreate(owl, module, "simpleRayGen", sizeof(RayGenData), rayGenVars, -1);
+      owlRayGenCreate(owl, module, "rayGen", sizeof(RayGenData), rayGenVars, -1);
 
   // ------------------------------------------------------------------
   // alloc buffers

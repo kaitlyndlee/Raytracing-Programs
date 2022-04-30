@@ -303,6 +303,7 @@ void shoot(json_data_t *json_struct, float *ray_orgin, float *ray_direction, flo
  *                 If no pervious object in_ior = 1.
  */
 void iterative_shoot(json_data_t *json_struct, float *ray_orgin, float *ray_direction, float *out_color, int skip_index) {
+  printf("Direction: (%f, %f, %f)\n", ray_direction[0], ray_direction[1], ray_direction[2]);
   float color[3];
   float opacity;
   shape_t *nearest_object = NULL;
@@ -326,7 +327,7 @@ void iterative_shoot(json_data_t *json_struct, float *ray_orgin, float *ray_dire
   float next_ray_orgin[3];
   v3_set_points(next_ray_orgin, intersection);
   int next_skip_index = nearest_object_index;
-  int next_nearest_object_index;
+  int next_nearest_object_index = nearest_object_index;
   float next_intersecion[3];
   float next_normal[3];
   v3_set_points(next_normal, normal);
@@ -339,6 +340,9 @@ void iterative_shoot(json_data_t *json_struct, float *ray_orgin, float *ray_dire
   int recursion_level = 1;
   while(recursion_level < MAX_RECURSION)
   {
+    printf("\tPrim ID: %d, intersection: (%f, %f, %f), normal: (%f, %f, %f)\n", 
+    next_nearest_object_index, next_intersecion[0], next_intersecion[1], next_intersecion[2], next_normal[0], next_normal[1], next_normal[2]);
+    
     // calculate reflection color
     if (next_nearest_object->reflectivity > 0) {
       v3_reflect(reflection_vector, next_ray_direction, next_normal);
@@ -402,7 +406,7 @@ void calc_color(json_data_t *json_struct, float *out_color, int object_index, fl
 
         specular_light(specular_output, &json_struct->lights_list[lights], object.specular_color, 
                    normal, light_direction, ray_direction);
-  
+        
         out_color[0] += (diffuse_output[0] + specular_output[0]) * rad_atten * ang_atten;
         out_color[1] += (diffuse_output[1] + specular_output[1]) * rad_atten * ang_atten;
         out_color[2] += (diffuse_output[2] + specular_output[2]) * rad_atten * ang_atten;
