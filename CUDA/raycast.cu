@@ -41,6 +41,8 @@ int main(int argc, char **argv) {
     exit(1);
   }
 
+  warm_up_gpu(0);
+
   gettimeofday(&start, NULL);
   
   json_data_t *json_struct;

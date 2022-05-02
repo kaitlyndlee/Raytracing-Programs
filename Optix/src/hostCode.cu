@@ -1,23 +1,3 @@
-// ======================================================================== //
-// Copyright 2019 Ingo Wald                                                 //
-//                                                                          //
-// Licensed under the Apache License, Version 2.0 (the "License");          //
-// you may not use this file except in compliance with the License.         //
-// You may obtain a copy of the License at                                  //
-//                                                                          //
-//     http://www.apache.org/licenses/LICENSE-2.0                           //
-//                                                                          //
-// Unless required by applicable law or agreed to in writing, software      //
-// distributed under the License is distributed on an "AS IS" BASIS,        //
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. //
-// See the License for the specific language governing permissions and      //
-// limitations under the License.                                           //
-// ======================================================================== //
-
-// This program shows a minimal setup: no geometry, just a ray generation
-// shader that accesses the pixels and draws a checkerboard pattern to
-// the output file ll00-rayGenOnly.png
-
 // public owl API
 #include "cuda_defs.h"
 #include "deviceCode.h"
@@ -43,6 +23,8 @@
 
 extern "C" char deviceCode_ptx[];
 extern "C" char v3_math_ptx[];
+
+void warm_up_gpu(int device);
 
 int main(int argc, char **argv) {
 
@@ -79,8 +61,6 @@ int main(int argc, char **argv) {
   photo_data.width = width;
   photo_data.size = photo_data.width * photo_data.height * 3;
   photo_data.pixmap = (uint8_t *) malloc(photo_data.size);
-
-  gettimeofday(&start, NULL);
 
   // TODO: Rrefactor to use parse.cpp
   // Separate shapes into separate vectors
@@ -181,22 +161,14 @@ int main(int argc, char **argv) {
   float pixel_height = json_struct->camera_height / photo_data.height;
   float pixel_width = json_struct->camera_width / photo_data.width;
 
-  // Initialize CUDA and OptiX 7, and create an "owl device," a context to hold
-  // the ray generation shader and output buffer. The "1" is the number of
-  // devices requested.
+  warm_up_gpu(0);
+
+  gettimeofday(&start, NULL);
+
   OWLContext owl = owlContextCreate(nullptr, 1);
-  // PTX is the intermediate code that the CUDA deviceCode.cu shader program is
-  // converted into. You can see the machine-centric PTX code in
-  // build\samples\s00-rayGenOnly\cuda_compile_ptx_1_generated_deviceCode.cu.ptx_embedded.c
-  // This PTX intermediate code representation is then compiled into an OptiX
-  // module. See https://devblogs.nvidia.com/how-to-get-started-with-optix-7/
-  // for more information.
   OWLModule module = owlModuleCreate(owl, deviceCode_ptx);
 
-  // ##################################################################
-  // set up all the *GEOMETRY* graph we want to render
-  // ##################################################################
-
+  // Set up the geometry
   OWLVarDecl spheresListVars[] = {{"primitives", OWL_BUFPTR, OWL_OFFSETOF(SpheresList, primitives)},
                                   {/* sentinel to mark end of list */}};
   OWLGeomType spheresGeomType =
@@ -225,9 +197,6 @@ int main(int argc, char **argv) {
 
   owlBuildPrograms(owl);
 
-  // ##################################################################
-  // set up all the *GEOMS* we want to run that code on
-  // ##################################################################
   OWLBuffer spheresBuffer =
       owlDeviceBufferCreate(owl, OWL_USER_TYPE(spheres[0]), spheres.size(), spheres.data());
   OWLGeom spheresGeom = owlGeomCreate(owl, spheresGeomType);
@@ -246,10 +215,7 @@ int main(int argc, char **argv) {
   owlGeomSetPrimCount(quadricsGeom, quadrics.size());
   owlGeomSetBuffer(quadricsGeom, "primitives", quadricsBuffer);
 
-  // ##################################################################
-  // set up all *ACCELS* we need to trace into those groups
-  // ##################################################################
-
+  // Set up all acceleration objects
   OWLGeom userGeoms[] = {spheresGeom, planesGeom, quadricsGeom};
   OWLGroup userGeomGroup = owlUserGeomGroupCreate(owl, 3, userGeoms);
   owlGroupBuildAccel(userGeomGroup);
@@ -258,17 +224,8 @@ int main(int argc, char **argv) {
   owlInstanceGroupSetChild(world, 0, userGeomGroup);
   owlGroupBuildAccel(world);
 
-  // ##################################################################
-  // set miss and raygen program required for SBT
-  // ##################################################################
-
-  // -------------------------------------------------------
-  // set up miss prog
-  // -------------------------------------------------------
   OWLMissProg missProg = owlMissProgCreate(owl, module, "miss", 0, NULL, -1);
 
-  // Allocate room for one RayGen shader, create it, and
-  // hold on to it with the "owl" context
   OWLVarDecl rayGenVars[] = {{"pixmap", OWL_BUFPTR, OWL_OFFSETOF(RayGenData, pixmap)},
                              {"width", OWL_INT, OWL_OFFSETOF(RayGenData, width)},
                              {"height", OWL_INT, OWL_OFFSETOF(RayGenData, height)},
@@ -283,11 +240,7 @@ int main(int argc, char **argv) {
 
   OWLRayGen rayGen = owlRayGenCreate(owl, module, "rayGen", sizeof(RayGenData), rayGenVars, -1);
 
-  // ------------------------------------------------------------------
-  // alloc buffers
-  // ------------------------------------------------------------------
-  // Create a frame buffer as page-locked, aka "pinned" memory. See CUDA
-  // documentation for benefits and more info.
+  // TODO: allocating a device memory buffer instead of pinned here
   OWLBuffer frameBuffer = owlHostPinnedBufferCreate(owl,
                                                     /*type:*/ OWL_UCHAR,
                                                     /*size:*/ photo_data.size);
@@ -295,9 +248,7 @@ int main(int argc, char **argv) {
   OWLBuffer lightsBuffer =
       owlDeviceBufferCreate(owl, OWL_USER_TYPE(lights[0]), json_struct->num_lights, lights);
 
-  // ------------------------------------------------------------------
-  // build Shader Binding Table (SBT) required to trace the groups
-  // ------------------------------------------------------------------
+  // Build Shader Binding Table (SBT) required to trace the groups
   owlRayGenSetBuffer(rayGen, "pixmap", frameBuffer);
   owlRayGenSet1i(rayGen, "width", photo_data.width);
   owlRayGenSet1i(rayGen, "height", photo_data.height);
@@ -309,34 +260,20 @@ int main(int argc, char **argv) {
   owlRayGenSetBuffer(rayGen, "lights", lightsBuffer);
   owlRayGenSet1i(rayGen, "num_lights", json_struct->num_lights);
 
-  // (re-)builds all optix programs, with current pipeline settings
   owlBuildPrograms(owl);
-  // Create the pipeline. Note that owl will (kindly) warn there are no geometry
-  // and no miss programs defined.
   owlBuildPipeline(owl);
-  // Build a shader binding table entry for the ray generation record.
   owlBuildSBT(owl);
 
-  // ##################################################################
-  // now that everything is ready: launch it ....
-  // ##################################################################
-
-  // Normally launching without a hit or miss shader causes OptiX to trigger
-  // warnings. Owl's wrapper call here will set up fake hit and miss records
-  // into the SBT to avoid these.
   owlRayGenLaunch2D(rayGen, photo_data.width, photo_data.height);
 
   const uint8_t *fb = (const uint8_t *) owlBufferGetPointer(frameBuffer, 0);
   memcpy(photo_data.pixmap, fb, photo_data.size);
   ppm_WriteOutP3(photo_data, output_image);
 
-  // ##################################################################
-  // and finally, clean up
-  // ##################################################################
-
   owlModuleRelease(module);
   owlRayGenRelease(rayGen);
   owlBufferRelease(frameBuffer);
+  owlBufferRelease(lightsBuffer);
   owlContextDestroy(owl);
 
   gettimeofday(&end, NULL);
@@ -345,4 +282,30 @@ int main(int argc, char **argv) {
        1000000.00);
   printf("Time (sec) to create a %dx%d image with %d shape(s) and %d light(s): %f\n", width, height,
          json_struct->num_shapes, json_struct->num_lights, elapsed);
+}
+
+__global__ void warmup(unsigned int *tmp) {
+  if (threadIdx.x == 0)
+    *tmp = 555;
+
+  return;
+}
+
+void warm_up_gpu(int device) {
+  cudaSetDevice(device);
+  unsigned int *dev_tmp;
+  unsigned int *tmp;
+  tmp = (unsigned int *) malloc(sizeof(unsigned int));
+  *tmp = 0;
+  cudaMalloc((unsigned int **) &dev_tmp, sizeof(unsigned int));
+
+  warmup<<<1, 256>>>(dev_tmp);
+
+  // copy data from device to host
+  cudaMemcpy(tmp, dev_tmp, sizeof(unsigned int), cudaMemcpyDeviceToHost);
+  cudaDeviceSynchronize();
+  cudaFree(dev_tmp);
+  free(tmp);
+
+  return;
 }

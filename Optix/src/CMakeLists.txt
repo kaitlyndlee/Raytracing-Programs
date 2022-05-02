@@ -33,7 +33,7 @@ embed_ptx(
     deviceCode.cu
 )
 
-add_executable(raytrace hostCode.cpp ppm.cpp ppm.h objects.cpp objects.h parse.cpp parse.h v3math.cu v3math.h)
+add_executable(raytrace hostCode.cu ppm.cpp ppm.h objects.cpp objects.h parse.cpp parse.h v3math.cu v3math.h)
 set_target_properties(raytrace
   PROPERTIES
   CUDA_SEPARABLE_COMPILATION ON

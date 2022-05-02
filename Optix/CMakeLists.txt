@@ -3,7 +3,7 @@ set(CMAKE_C_COMPILER "/usr/bin/gcc")
 set(CMAKE_CXX_COMPILER "/usr/bin/g++")
 project(raytrace VERSION 0.1.0 LANGUAGES C CXX CUDA)
 find_package(CUDA)
-set (CMAKE_CXX_FLAGS "--std=c++14")
+set (CMAKE_CXX_FLAGS "-O3")
 set (CUDA_PROPAGATE_HOST_FLAGS ON)
 
 # Include owl API

@@ -486,11 +486,11 @@ OPTIX_INTERSECT_PROGRAM(Planes)() {
   }
 }
 
-// TODO: what does this do exactly?
+// TODO: Recalculate based off of image size
 OPTIX_BOUNDS_PROGRAM(Planes)(const void *geomData, box3f &primBounds, const int primId) {
   const PlanesList &self = *(const PlanesList *) geomData;
   const Plane plane = self.primitives[primId];
-  primBounds = box3f(vec3f(-1000.f, -1000.f, -1000.f), vec3f(+1000.f, +1000.f, +1000.f));
+  primBounds = box3f(vec3f(-INFINITY, 0.f, -INFINITY), vec3f(INFINITY, 0.f, INFINITY));
 }
 
 OPTIX_CLOSEST_HIT_PROGRAM(Planes)() {
@@ -570,7 +570,7 @@ OPTIX_INTERSECT_PROGRAM(Quadrics)() {
   }
 }
 
-// TODO: what does this do exactly?
+// TODO: Fix for reflection
 OPTIX_BOUNDS_PROGRAM(Quadrics)(const void *geomData, box3f &primBounds, const int primId) {
   const QuadricsList &self = *(const QuadricsList *) geomData;
   const Quadric quadric = self.primitives[primId];

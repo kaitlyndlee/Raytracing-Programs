@@ -25,4 +25,30 @@ __device__ void iterative_shoot(json_data_t *json_struct, float *ray_origin, flo
 __device__ void calc_color(json_data_t *json_struct, float *out_color, int object_index, 
                            float *intersection, float *normal, float *ray_direction);
 
+__global__ void warmup(unsigned int *tmp) {
+  if (threadIdx.x == 0)
+    *tmp = 555;
+
+  return;
+}
+
+void warm_up_gpu(int device) {
+  cudaSetDevice(device);
+  unsigned int *dev_tmp;
+  unsigned int *tmp;
+  tmp = (unsigned int *) malloc(sizeof(unsigned int));
+  *tmp = 0;
+  cudaMalloc((unsigned int **) &dev_tmp, sizeof(unsigned int));
+
+  warmup<<<1, 256>>>(dev_tmp);
+
+  // copy data from device to host
+  cudaMemcpy(tmp, dev_tmp, sizeof(unsigned int), cudaMemcpyDeviceToHost);
+  cudaDeviceSynchronize();
+  cudaFree(dev_tmp);
+  free(tmp);
+
+  return;
+}
+
 #endif
