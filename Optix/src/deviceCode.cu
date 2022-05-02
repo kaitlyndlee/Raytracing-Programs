@@ -1,23 +1,3 @@
-// ======================================================================== //
-// Copyright 2019 Ingo Wald                                                 //
-//                                                                          //
-// Licensed under the Apache License, Version 2.0 (the "License");          //
-// you may not use this file except in compliance with the License.         //
-// You may obtain a copy of the License at                                  //
-//                                                                          //
-//     http://www.apache.org/licenses/LICENSE-2.0                           //
-//                                                                          //
-// Unless required by applicable law or agreed to in writing, software      //
-// distributed under the License is distributed on an "AS IS" BASIS,        //
-// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. //
-// See the License for the specific language governing permissions and      //
-// limitations under the License.                                           //
-// ======================================================================== //
-
-// Ray gen shader for ll00-rayGenOnly. No actual rays are harmed in the making
-// of this shader. The pixel location is simply translated into a checkerboard
-// pattern.
-
 #include "deviceCode.h"
 
 #include <optix_device.h>
@@ -49,13 +29,13 @@ inline __device__ float clamp(float value, float lower_bound, float upper_bound)
  * @param v - pointer of the vector to relflect
  * @param n - pointer of the vector that is the surface
  */
-inline __device__ void reflect(vec3f *dst, vec3f v, vec3f n) {
+inline __device__ vec3f reflect(vec3f v, vec3f n) {
   vec3f product = n;
 
   float dot_product = dot(v, n);
   product = product * 2 * dot_product;
   product = v - product;
-  *dst = product;
+  return product;
 }
 
 /**
@@ -145,8 +125,7 @@ inline __device__ void specular_light(vec3f *return_color,
     return;
   }
 
-  vec3f reflection;
-  reflect(&reflection, light_vector, surface_normal);
+  vec3f reflection = reflect(light_vector, surface_normal);
 
   const float angle = dot(temp, reflection);
 
@@ -158,7 +137,7 @@ inline __device__ void specular_light(vec3f *return_color,
   *return_color = object_color * light.color * powf(angle, 20);
 }
 
-inline __device__ vec3f calc_color(const RayGenData &self, owl::Ray &ray, PerRayData &prd) {
+inline __device__ vec3f calc_color(const RayGenData self, owl::Ray ray, PerRayData prd) {
   vec3f color = vec3f(0, 0, 0);
   float opacity = 1.0 - prd.reflectivity - prd.refractivity;
   if (opacity <= 0) {
@@ -203,9 +182,45 @@ inline __device__ vec3f calc_color(const RayGenData &self, owl::Ray &ray, PerRay
   return color * opacity;
 }
 
-// TODO: FIX
+// inline __device__ vec3f iterative_shoot(const RayGenData self, owl::Ray ray) {
+//   PerRayData prd;
+//   prd.distance = -1;
+//   prd.primId = -1;
+//   prd.prev_intersection = NULL;
+
+//   vec3f color;
+//   set_to_black(&color);
+//   for (int i = 0; i < MAX_DEPTH; i++) {
+//     owl::traceRay(/*accel to trace against*/ self.world,
+//                   /*the ray to trace*/ ray,
+//                   /*prd*/ prd);
+
+//     // Did not hit an object
+//     if (prd.primId == -1) {
+//       break;
+//     }
+
+//     color += calc_color(self, ray, prd);
+
+//     if (prd.reflectivity == 0) {
+//       break;
+//     }
+
+//     // Prepare new ray to shoot
+//     ray.direction = reflect(ray.direction, prd.normal);
+//     ray.direction *= 0.01;
+//     ray.direction = normalize(ray.direction);
+//     PerRayData prev_prd = prd;
+//     prd.prev_intersection = &prev_prd;
+//     ray.origin = prd.intersection;
+//     prd.primId = -1;
+//     prd.distance = -1;
+//   }
+
+//   return color;
+// }
+
 inline __device__ vec3f iterative_shoot(const RayGenData &self, owl::Ray &ray) {
-  printf("Direction: (%f, %f, %f)\n", ray.direction.x, ray.direction.y, ray.direction.z);
   PerRayData prd;
   prd.distance = -1;
   prd.primId = -1;
@@ -217,7 +232,6 @@ inline __device__ vec3f iterative_shoot(const RayGenData &self, owl::Ray &ray) {
   vec3f color;
   set_to_black(&color);
   if (prd.primId == -1) {
-    printf("\tIn no intersection\n");
     set_to_black(&color);
     return color;
   }
@@ -234,16 +248,14 @@ inline __device__ vec3f iterative_shoot(const RayGenData &self, owl::Ray &ray) {
   float total_refl = prd.reflectivity;
 
   for (int i = 0; i < MAX_DEPTH; i++) {
-    printf("\tPrim ID: %d, type: %d, normal: (%f, %f, %f)\n", 
-    next_prd.primId, next_prd.shape_type, next_prd.normal.x, next_prd.normal.y, next_prd.normal.z);
     if (next_prd.reflectivity > 0) {
-      reflect(&reflection_vector, next_ray.direction, next_prd.normal);
+      reflection_vector = reflect(next_ray.direction, next_prd.normal);
       reflection_vector = normalize(reflection_vector);
       next_ray.direction = reflection_vector;
       owl::traceRay(/*accel to trace against*/ self.world,
                     /*the ray to trace*/ next_ray,
                     /*prd*/ next_prd);
-        
+
       if (next_prd.primId == -1) {
         break;
       }
@@ -253,13 +265,12 @@ inline __device__ vec3f iterative_shoot(const RayGenData &self, owl::Ray &ray) {
       temp_color *= total_refl;
       total_refl *= next_prd.reflectivity;
       color += temp_color;
-      
+
       // Prepare next ray
       next_prd.prev_intersection = &next_prd;
       next_ray.origin = next_prd.intersection;
     }
     else {
-      printf("\tReflectivity: %f\n", next_prd.reflectivity);
       break;
     }
   }
@@ -420,18 +431,19 @@ OPTIX_CLOSEST_HIT_PROGRAM(Spheres)() {
   const int primId = optixGetPrimitiveIndex();
   const auto &self = owl::getProgramData<SpheresList>().primitives[primId];
   PerRayData &prd = owl::getPRD<PerRayData>();
-  prd.primId = primId;
-  prd.diffuse_color = self.diffuse_color;
-  prd.specular_color = self.specular_color;
-  prd.reflectivity = self.reflectivity;
-  prd.refractivity = self.refractivity;
   const vec3f origin = optixGetWorldRayOrigin();
   const vec3f direction = optixGetWorldRayDirection();
   prd.intersection = origin + direction * prd.distance;
   const float temp = 1.0 / self.radius;
   prd.normal = (prd.intersection - self.position) * temp;
   prd.normal = normalize(prd.normal);
+  prd.primId = primId;
   prd.shape_type = SPHERE;
+  prd.diffuse_color = self.diffuse_color;
+  prd.specular_color = self.specular_color;
+  prd.reflectivity = self.reflectivity;
+  prd.refractivity = self.refractivity;
+  prd.prev_intersection = NULL;
 }
 
 OPTIX_INTERSECT_PROGRAM(Planes)() {
@@ -478,7 +490,7 @@ OPTIX_INTERSECT_PROGRAM(Planes)() {
 OPTIX_BOUNDS_PROGRAM(Planes)(const void *geomData, box3f &primBounds, const int primId) {
   const PlanesList &self = *(const PlanesList *) geomData;
   const Plane plane = self.primitives[primId];
-  primBounds = box3f(vec3f(-1.f, -1.f, 0.f), vec3f(+1.f, +1.f, +1.f));
+  primBounds = box3f(vec3f(-1000.f, -1000.f, -1000.f), vec3f(+1000.f, +1000.f, +1000.f));
 }
 
 OPTIX_CLOSEST_HIT_PROGRAM(Planes)() {
@@ -495,6 +507,7 @@ OPTIX_CLOSEST_HIT_PROGRAM(Planes)() {
   prd.intersection = origin + direction * prd.distance;
   prd.normal = self.normal;
   prd.shape_type = PLANE;
+  prd.prev_intersection = NULL;
 }
 
 OPTIX_INTERSECT_PROGRAM(Quadrics)() {
@@ -593,4 +606,5 @@ OPTIX_CLOSEST_HIT_PROGRAM(Quadrics)() {
   }
 
   prd.shape_type = QUADRIC;
+  prd.prev_intersection = NULL;
 }

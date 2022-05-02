@@ -52,7 +52,6 @@ int main(int argc, char **argv) {
   }
 
   struct timeval start, end;
-  gettimeofday(&start, NULL);
 
   int width = atoi(argv[1]);
   int height = atoi(argv[2]);
@@ -80,6 +79,8 @@ int main(int argc, char **argv) {
   photo_data.width = width;
   photo_data.size = photo_data.width * photo_data.height * 3;
   photo_data.pixmap = (uint8_t *) malloc(photo_data.size);
+
+  gettimeofday(&start, NULL);
 
   // TODO: Rrefactor to use parse.cpp
   // Separate shapes into separate vectors
@@ -179,9 +180,6 @@ int main(int argc, char **argv) {
 
   float pixel_height = json_struct->camera_height / photo_data.height;
   float pixel_width = json_struct->camera_width / photo_data.width;
-
-  LOG("owl example '" << argv[0] << "' starting up");
-  LOG("building module, programs, and pipeline");
 
   // Initialize CUDA and OptiX 7, and create an "owl device," a context to hold
   // the ray generation shader and output buffer. The "1" is the number of
@@ -283,13 +281,11 @@ int main(int argc, char **argv) {
                              {"num_lights", OWL_INT, OWL_OFFSETOF(RayGenData, num_lights)},
                              {/* sentinel: */ nullptr}};
 
-  OWLRayGen rayGen =
-      owlRayGenCreate(owl, module, "rayGen", sizeof(RayGenData), rayGenVars, -1);
+  OWLRayGen rayGen = owlRayGenCreate(owl, module, "rayGen", sizeof(RayGenData), rayGenVars, -1);
 
   // ------------------------------------------------------------------
   // alloc buffers
   // ------------------------------------------------------------------
-  LOG("allocating frame buffer");
   // Create a frame buffer as page-locked, aka "pinned" memory. See CUDA
   // documentation for benefits and more info.
   OWLBuffer frameBuffer = owlHostPinnedBufferCreate(owl,
@@ -325,7 +321,6 @@ int main(int argc, char **argv) {
   // now that everything is ready: launch it ....
   // ##################################################################
 
-  LOG("executing the launch ...");
   // Normally launching without a hit or miss shader causes OptiX to trigger
   // warnings. Owl's wrapper call here will set up fake hit and miss records
   // into the SBT to avoid these.
@@ -339,11 +334,15 @@ int main(int argc, char **argv) {
   // and finally, clean up
   // ##################################################################
 
-  LOG("cleaning up ...");
   owlModuleRelease(module);
   owlRayGenRelease(rayGen);
   owlBufferRelease(frameBuffer);
   owlContextDestroy(owl);
 
-  LOG_OK("seems all went OK; app is done, this should be the last output ...");
+  gettimeofday(&end, NULL);
+  double elapsed =
+      (((end.tv_sec * 1000000.0 + end.tv_usec) - (start.tv_sec * 1000000.0 + start.tv_usec)) /
+       1000000.00);
+  printf("Time (sec) to create a %dx%d image with %d shape(s) and %d light(s): %f\n", width, height,
+         json_struct->num_shapes, json_struct->num_lights, elapsed);
 }
