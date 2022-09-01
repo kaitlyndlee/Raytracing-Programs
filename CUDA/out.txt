@@ -1,0 +1,9 @@
+simple.ppm
+Time (sec) to create a 1000x1000 scene with 4 shape(s) and 1 light(s): 0.000963
+Time (sec) to run the ray tracer and create the output image: 0.121413
+reflection.ppm
+Time (sec) to create a 1000x1000 scene with 15 shape(s) and 1 light(s): 0.000850
+Time (sec) to run the ray tracer and create the output image: 0.118903
+quadric.ppm
+Time (sec) to create a 1000x1000 scene with 5 shape(s) and 2 light(s): 0.000822
+Time (sec) to run the ray tracer and create the output image: 0.123301

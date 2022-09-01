@@ -6,6 +6,9 @@ find_package(CUDA)
 set (CMAKE_CXX_FLAGS "-O3")
 set (CUDA_PROPAGATE_HOST_FLAGS ON)
 
+# Set optix install directory here
+set (OptiX_ROOT_DIR "/home/klee/NVIDIA-OptiX-SDK-7.4.0-linux64-x86_64/")
+
 # Include owl API
 set(owl_dir ${PROJECT_SOURCE_DIR}/owl/)
 add_subdirectory(${owl_dir} EXCLUDE_FROM_ALL)

@@ -162,10 +162,7 @@ inline __device__ vec3f calc_color(const RayGenData self, owl::Ray ray, PerRayDa
     new_prd.distance = -1;
     new_prd.prev_intersection = &prd;
 
-    owl::traceRay(/*accel to trace against*/ self.world,
-                  /*the ray to trace*/ light_ray,
-                  /*prd*/ new_prd,
-                  /*only CH*/ OPTIX_RAY_FLAG_DISABLE_ANYHIT);
+    owl::traceRay(self.world, light_ray, new_prd, OPTIX_RAY_FLAG_TERMINATE_ON_FIRST_HIT);
 
     // Not in the shadow of another shape
     if (new_prd.primId == -1) {

@@ -74,11 +74,21 @@ int main(int argc, char **argv) {
 
   dim3 num_blocks(photo_data->width/tx+1, photo_data->height/ty+1);
   dim3 threads_per_block(tx, ty);
- 
+
+  gettimeofday(&end, NULL);
+  double scene_creation = (((end.tv_sec*1000000.0 + end.tv_usec) -
+                        (start.tv_sec*1000000.0 + start.tv_usec)) / 1000000.00);
+  
+  gettimeofday(&start, NULL);
   raytrace_engine<<<num_blocks, threads_per_block>>>(dev_pixel_height, dev_pixel_width, json_struct, photo_data);
   cudaDeviceSynchronize();
 
   ppm_WriteOutP3(*photo_data, output_image);
+  gettimeofday(&end, NULL);
+  double raytracing_time = (((end.tv_sec*1000000.0 + end.tv_usec) -
+                        (start.tv_sec*1000000.0 + start.tv_usec)) / 1000000.00);
+
+  gettimeofday(&start, NULL);
   cudaFree(json_struct);
   cudaFree(dev_pixel_height);
   cudaFree(dev_pixel_width);
@@ -86,10 +96,11 @@ int main(int argc, char **argv) {
   cudaFree(photo_data);
 
   gettimeofday(&end, NULL);
-  double elapsed = (((end.tv_sec*1000000.0 + end.tv_usec) -
+  scene_creation += (((end.tv_sec*1000000.0 + end.tv_usec) -
                         (start.tv_sec*1000000.0 + start.tv_usec)) / 1000000.00);
-  printf("Time (sec) to create a %dx%d image with %d shape(s) and %d light(s): %f\n", width, height, 
-                                        json_struct->num_shapes, json_struct->num_lights, elapsed);
+  printf("Time (sec) to create a %dx%d scene with %d shape(s) and %d light(s): %f\n", width, height,
+         json_struct->num_shapes, json_struct->num_lights, scene_creation);
+  printf("Time (sec) to run the ray tracer and create the output image: %f\n", raytracing_time);
 }
 
 /**
@@ -197,8 +208,6 @@ __device__ void iterative_shoot(json_data_t *json_struct, float *ray_origin, flo
   float next_normal[3];
   v3_set_points(next_normal, normal);
 
-  float reflection_color[3]; 
-  set_to_black(reflection_color);
   float reflection_vector[3];
   float color[3];
   float total_refl = nearest_object->reflectivity;

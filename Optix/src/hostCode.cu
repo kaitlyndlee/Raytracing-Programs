@@ -50,6 +50,7 @@ int main(int argc, char **argv) {
     exit(1);
   }
 
+  gettimeofday(&start, NULL);
   json_data_t *json_struct = (json_data_t *) malloc(sizeof(json_data_t));
   json_struct->shapes_list = (shape_t *) malloc(MAX_SHAPES * sizeof(shape_t));
   json_struct->lights_list = (light_t *) malloc(MAX_SHAPES * sizeof(light_t));
@@ -161,6 +162,11 @@ int main(int argc, char **argv) {
   float pixel_height = json_struct->camera_height / photo_data.height;
   float pixel_width = json_struct->camera_width / photo_data.width;
 
+  gettimeofday(&end, NULL);
+  double scene_creation =
+    (((end.tv_sec * 1000000.0 + end.tv_usec) - (start.tv_sec * 1000000.0 + start.tv_usec)) /
+      1000000.00);
+      
   warm_up_gpu(0);
 
   gettimeofday(&start, NULL);
@@ -264,24 +270,38 @@ int main(int argc, char **argv) {
   owlBuildPipeline(owl);
   owlBuildSBT(owl);
 
+  gettimeofday(&end, NULL);
+  double owl_overhead =
+      (((end.tv_sec * 1000000.0 + end.tv_usec) - (start.tv_sec * 1000000.0 + start.tv_usec)) /
+       1000000.00);
+  
+  gettimeofday(&start, NULL);
   owlRayGenLaunch2D(rayGen, photo_data.width, photo_data.height);
 
   const uint8_t *fb = (const uint8_t *) owlBufferGetPointer(frameBuffer, 0);
   memcpy(photo_data.pixmap, fb, photo_data.size);
   ppm_WriteOutP3(photo_data, output_image);
-
+  
+  gettimeofday(&end, NULL);
+  double raytracing_time =
+      (((end.tv_sec * 1000000.0 + end.tv_usec) - (start.tv_sec * 1000000.0 + start.tv_usec)) /
+       1000000.00);
+  
+  gettimeofday(&start, NULL);
   owlModuleRelease(module);
   owlRayGenRelease(rayGen);
   owlBufferRelease(frameBuffer);
   owlBufferRelease(lightsBuffer);
   owlContextDestroy(owl);
-
   gettimeofday(&end, NULL);
-  double elapsed =
-      (((end.tv_sec * 1000000.0 + end.tv_usec) - (start.tv_sec * 1000000.0 + start.tv_usec)) /
+
+  owl_overhead += (((end.tv_sec * 1000000.0 + end.tv_usec) - (start.tv_sec * 1000000.0 + start.tv_usec)) /
        1000000.00);
-  printf("Time (sec) to create a %dx%d image with %d shape(s) and %d light(s): %f\n", width, height,
-         json_struct->num_shapes, json_struct->num_lights, elapsed);
+      
+  printf("Time (sec) to create a %dx%d scene with %d shape(s) and %d light(s): %f\n", width, height,
+         json_struct->num_shapes, json_struct->num_lights, scene_creation);
+  printf("Time (sec) for the OWL overhead: %f\n", owl_overhead);
+  printf("Time (sec) to run the ray tracer and create the output image: %f\n", raytracing_time);
 }
 
 __global__ void warmup(unsigned int *tmp) {

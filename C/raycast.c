@@ -6,6 +6,7 @@
 #include <string.h>
 #include <assert.h>
 #include <math.h> 
+#include <sys/time.h>
 
 #include "raycast.h"
 #include "v3math.h"
@@ -50,12 +51,21 @@ int main(int argc, char **argv) {
   photo_data.width = width;
   photo_data.size = photo_data.width * photo_data.height * 3;
   photo_data.pixmap = malloc(photo_data.size);
-
+  
+  struct timeval start, end;
+  gettimeofday(&start, NULL);
   raycast(json_struct, photo_data);
 
   ppm_WriteOutP3(photo_data, output_image);
   free(photo_data.pixmap);
   free(json_struct);
+
+  gettimeofday(&end, NULL);
+  double elapsed = (((end.tv_sec*1000000.0 + end.tv_usec) -
+                        (start.tv_sec*1000000.0 + start.tv_usec)) / 1000000.00);
+  printf("Time (sec) to create a %dx%d image with %d shape(s) and %d light(s): %f\n", width, height, 
+                                        json_struct->num_shapes, json_struct->num_lights, elapsed);
+
 }
 
 
@@ -303,7 +313,6 @@ void shoot(json_data_t *json_struct, float *ray_orgin, float *ray_direction, flo
  *                 If no pervious object in_ior = 1.
  */
 void iterative_shoot(json_data_t *json_struct, float *ray_orgin, float *ray_direction, float *out_color, int skip_index) {
-  printf("Direction: (%f, %f, %f)\n", ray_direction[0], ray_direction[1], ray_direction[2]);
   float color[3];
   float opacity;
   shape_t *nearest_object = NULL;
@@ -332,17 +341,13 @@ void iterative_shoot(json_data_t *json_struct, float *ray_orgin, float *ray_dire
   float next_normal[3];
   v3_set_points(next_normal, normal);
 
-  float reflection_color[3]; 
-  set_to_black(reflection_color);
   float reflection_vector[3];
-  float temp_color[3];
+  float total_refl = nearest_object->reflectivity;
+
 
   int recursion_level = 1;
   while(recursion_level < MAX_RECURSION)
   {
-    printf("\tPrim ID: %d, intersection: (%f, %f, %f), normal: (%f, %f, %f)\n", 
-    next_nearest_object_index, next_intersecion[0], next_intersecion[1], next_intersecion[2], next_normal[0], next_normal[1], next_normal[2]);
-    
     // calculate reflection color
     if (next_nearest_object->reflectivity > 0) {
       v3_reflect(reflection_vector, next_ray_direction, next_normal);
@@ -352,9 +357,11 @@ void iterative_shoot(json_data_t *json_struct, float *ray_orgin, float *ray_dire
       next_nearest_object_index = find_nearest_object(json_struct, &next_nearest_object, next_ray_orgin, 
                                              next_ray_direction, next_intersecion, next_normal, next_skip_index, false);
       if (next_nearest_object != NULL) {
-        calc_color(json_struct, temp_color, next_nearest_object_index, next_intersecion, next_normal, next_ray_direction);
-        // v3_scale(temp_color, next_nearest_object->reflectivity);
-        v3_add(reflection_color, reflection_color, temp_color);
+        calc_color(json_struct, color, next_nearest_object_index, next_intersecion, next_normal, next_ray_direction);
+        v3_scale(color, total_refl);
+        total_refl *= next_nearest_object->reflectivity;
+        v3_add(out_color, out_color, color);
+
         v3_set_points(next_ray_orgin, next_intersecion);
         next_skip_index = next_nearest_object_index;
         recursion_level++;
@@ -368,10 +375,7 @@ void iterative_shoot(json_data_t *json_struct, float *ray_orgin, float *ray_dire
     }   
   }
   calc_color(json_struct, color, nearest_object_index, intersection, normal, ray_direction);
-  
-  v3_scale(reflection_color, nearest_object->reflectivity);
   v3_add(out_color, out_color, color);
-  v3_add(out_color, out_color, reflection_color); 
 }
 
 void calc_color(json_data_t *json_struct, float *out_color, int object_index, float *intersection, float *normal, float *ray_direction) {
